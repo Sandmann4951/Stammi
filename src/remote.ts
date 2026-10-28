@@ -37,6 +37,13 @@ async function fnError(error: unknown): Promise<string> {
 
 export class RemoteError extends Error {}
 
+/** Kurzer technischer Grund für Fehlermeldungen (hilft bei der Fehlersuche). */
+function detail(e: { code?: string; message?: string }) {
+  if (e.code === 'PGRST205' || /schema cache|does not exist/i.test(e.message ?? '')) return 'Datenbank noch nicht eingerichtet';
+  if (e.code === '42501') return 'keine Berechtigung';
+  return [e.code, e.message].filter(Boolean).join(': ').slice(0, 160);
+}
+
 export async function invoke<T>(fn: 'act' | 'accept-invite', body: unknown): Promise<T> {
   const { data, error } = await sb().functions.invoke(fn, { body: body as Record<string, unknown> });
   if (error) throw new RemoteError(await fnError(error));
@@ -51,13 +58,13 @@ export function sendCall(c: Call, ids: string[]) {
 /** Gruppe des angemeldeten Nutzers (oder null, wenn noch keine Mitgliedschaft). */
 export async function myGroupId(userId: string): Promise<string | null> {
   const { data, error } = await sb().from('group_members').select('group_id').eq('user_id', userId).eq('status', 'active').limit(1);
-  if (error) throw new RemoteError('Die Gruppe konnte nicht geladen werden.');
+  if (error) throw new RemoteError(`Die Gruppe konnte nicht geladen werden. (${detail(error)})`);
   return (data?.[0]?.group_id as string) ?? null;
 }
 
 export async function fetchState(groupId: string, userId: string): Promise<{ state: State; version: number }> {
   const { data, error } = await sb().rpc('group_state', { gid: groupId });
-  if (error || !data) throw new RemoteError('Die Daten konnten nicht geladen werden.');
+  if (error || !data) throw new RemoteError(`Die Daten konnten nicht geladen werden.${error ? ` (${detail(error)})` : ''}`);
   const t = data as Tables & { groups: { state_version: number }[] };
   return { state: fromRows(t, userId), version: Number(t.groups[0]?.state_version ?? 0) };
 }
