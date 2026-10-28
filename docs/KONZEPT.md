@@ -12,21 +12,27 @@ Handy/Browser ──► GitHub Pages (statische React-App)
       ├── Lesen ─────────────► Supabase Postgres  (RLS: nur eigene Gruppe)
       ├── Fotos ─────────────► Supabase Storage   (privater Bucket, signierte URLs)
       └── Schreiben ─────────► Edge Function `act` ──► Postgres (eine Transaktion)
-                                 └─ dieselbe Fachlogik wie im Browser (src/engine)
+                                 └─ dieselbe Fachlogik wie im Browser (supabase/functions/_shared/engine)
 ```
 
 * **Lesen** passiert direkt aus den Tabellen. Row Level Security lässt nur Zeilen der eigenen Gruppe durch.
 * **Schreiben** geht ausschließlich über die Edge Function `act`. Sie prüft das Login, sperrt die Gruppe
-  (`SELECT … FOR UPDATE`), führt die Aktion mit der getesteten Logik aus `src/engine` aus und schreibt das Ergebnis
-  in einer Transaktion. Browser-Nutzer haben keinerlei Schreibrechte auf Tabellen.
+  (`SELECT … FOR UPDATE`), führt die Aktion mit der getesteten Logik aus `_shared/engine` aus und schreibt den
+  Unterschied zum vorherigen Stand in einer Transaktion. Browser-Nutzer haben keinerlei Schreibrechte auf Tabellen.
+* **Sofortige Anzeige**: Die App führt jede Aktion zuerst lokal aus und merkt sich die dabei erzeugten IDs. Der
+  Server spielt genau diese IDs wieder ein (geprüft: Format und noch nicht vergeben). So entstehen auf beiden Seiten
+  dieselben Einträge, und die App kann sofort weiterarbeiten. Lehnt der Server ab, lädt die App den Server-Stand neu.
 * **Sicherheitsnetz in der Datenbank**: Buchungen sind unveränderlich, gehen immer auf (Summe 0), und fachliche
   Schlüssel (`payout:<termin>`, `refill:<zyklus>`, `expense:<id>`, `opening`) können nur einmal aktiv sein.
   Selbst ein Fehler in der Server-Funktion kann so keine Doppelbuchung erzeugen.
 * **Aktualität**: Jede Änderung erhöht `groups.state_version`. Die App abonniert diese Zeile (Supabase Realtime)
   und lädt neu, sobald jemand anderes etwas ändert.
 
-Warum die Finanzlogik nicht in SQL nachgebaut wird: Sie ist in TypeScript mit 26 Tests abgesichert. Die Edge Function
+Warum die Finanzlogik nicht in SQL nachgebaut wird: Sie ist in TypeScript mit Tests abgesichert. Die Edge Function
 (Deno) nutzt exakt denselben Code. Zwei Implementierungen würden früher oder später auseinanderlaufen.
+
+Tests auf drei Ebenen: Fachlogik (`engine.test.ts`), Datenbank-Abbildung und Server-Ablauf gegen echtes Postgres
+(`db.test.ts`, `server.test.ts`, PGlite), Schema und Zugriffsregeln (`supabase/tests/schema.test.mjs`).
 
 ## 2. Datenmodell
 
@@ -73,13 +79,15 @@ schreiben, sich selbst zum Admin machen, Buchung ändern, doppelt abrechnen.
 * **Konto**: E-Mail und selbstgewähltes Passwort (mindestens 8 Zeichen). Die Sitzung bleibt auf dem Handy angemeldet.
 * **Keine offene Registrierung**: In Supabase ist „Allow new users to sign up“ ausgeschaltet. Konten entstehen nur über eine Einladung.
 * **Einladung** (wie in der Vorschau):
-  1. Der Admin tippt „Link erstellen“. Die Edge Function `invite` prüft, dass er Admin ist, erzeugt einen zufälligen
+  1. Der Admin tippt „Link erstellen“. Die Edge Function `act` prüft, dass er Admin ist, erzeugt einen zufälligen
      Schlüssel (32 Byte) und speichert nur dessen Hash. Der Link ist 7 Tage gültig und nur einmal nutzbar.
   2. Der Admin schickt den Link per WhatsApp.
   3. Die eingeladene Person öffnet den Link und gibt Anzeigename, E-Mail und Passwort ein. Die Edge Function
      `accept-invite` prüft den Schlüssel und legt Konto und Mitgliedschaft an. Danach ist die Person angemeldet.
 * **Passwort vergessen**: Supabase schickt eine E-Mail mit Link zurück in die App. Dort vergibt man ein neues Passwort.
   Dafür braucht es einen eigenen E-Mail-Versand (SMTP), siehe README.
+* **Erster Admin**: wird einmal im Supabase-Dashboard angelegt und richtet in der App die Gruppe ein. Das geht nur,
+  solange noch keine Gruppe existiert.
 * **Datenschutz**: Gespeichert werden nur Anzeigename und E-Mail. Export aller Buchungen als CSV ist eingebaut. Wer
   die Gruppe verlässt, wird deaktiviert, nicht gelöscht, weil seine Buchungen im Journal bleiben müssen.
   Konto-Löschung auf Wunsch macht der Admin in Supabase.

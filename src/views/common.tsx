@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import * as A from '../engine/actions';
-import { activeMembers, cycleInfo, MEETINGS_PER_CYCLE, payerRanking } from '../engine/finance';
-import type { Rsvp, State, StEvent } from '../engine/types';
-import { dayCount, diffDays, endOf, euro } from '../engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import { activeMembers, cycleInfo, MEETINGS_PER_CYCLE, payerRanking } from '@engine/finance';
+import type { Rsvp, State, StEvent } from '@engine/types';
+import { dayCount, diffDays, endOf, euro } from '@engine/util';
 import { go, useStore } from '../store';
 import { Avatar, DateBlock, Icon, Money, Pill, timeText } from '../ui';
 
@@ -31,7 +32,7 @@ export function TypeTag({ ev }: { ev: StEvent }) {
 export function RsvpButtons({ ev, compact }: { ev: StEvent; compact?: boolean }) {
   const { state, me, run } = useStore();
   const cur = A.rsvpOf(state, ev.id, me.id);
-  const set = (r: Rsvp) => run((s, c) => A.setRsvp(s, c, ev.id, me.id, cur === r ? 'open' : r), r === cur ? 'Antwort zurückgenommen' : r === 'yes' ? 'Prima, du bist dabei' : 'Abgesagt – schade!');
+  const set = (r: Rsvp) => run(call('setRsvp', ev.id, me.id, cur === r ? 'open' : r), r === cur ? 'Antwort zurückgenommen' : r === 'yes' ? 'Prima, du bist dabei' : 'Abgesagt – schade!');
   return (
     <div className={`rsvp${compact ? ' compact' : ''}`} role="group" aria-label="Deine Teilnahme">
       <button type="button" className={`rsvp-yes${cur === 'yes' ? ' on' : ''}`} aria-pressed={cur === 'yes'} onClick={(e) => { e.stopPropagation(); set('yes'); }}>
@@ -129,7 +130,7 @@ export function LocationEditor({ ev, compact }: { ev: StEvent; compact?: boolean
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(ev.location);
   const recent = A.recentLocations(state).filter((l) => l !== ev.location);
-  const save = (loc: string) => { if (run((s, c) => A.setEventLocation(s, c, ev.id, loc), loc.trim() ? `Ort: ${loc.trim()}` : 'Ort entfernt')) setEditing(false); };
+  const save = (loc: string) => { if (run(call('setEventLocation', ev.id, loc), loc.trim() ? `Ort: ${loc.trim()}` : 'Ort entfernt')) setEditing(false); };
   if (ev.status !== 'planned') return ev.location ? <p className="nc-meta"><Icon name="pin" size={16} /> {ev.location}</p> : null;
   if (!editing) {
     return ev.location ? (

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import * as A from '../engine/actions';
-import { activeEntries, activeMembers, cycleInfo, PAYOUT_PER_MEETING } from '../engine/finance';
-import type { MediaAsset, Note, StEvent } from '../engine/types';
-import { endOf, euro } from '../engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import { activeEntries, activeMembers, cycleInfo, PAYOUT_PER_MEETING } from '@engine/finance';
+import type { MediaAsset, Note, StEvent } from '@engine/types';
+import { endOf, euro } from '@engine/util';
 import { EventFormSheet, ExpenseSheet } from '../forms';
 import { processPhoto, removeMediaBlobs, UploadError, useMediaUrl } from '../media';
 import { go, useStore } from '../store';
@@ -42,9 +43,9 @@ export function EventDetail({ id }: { id: string }) {
           <div className="dh-actions">
             {ev.status === 'planned' && <button className="btn small" type="button" onClick={() => setEdit(true)}><Icon name="edit" size={16} /> {ev.originalSeriesDate ? 'Verschieben / ändern' : 'Bearbeiten'}</button>}
             {ev.status === 'planned' && <button className="btn small" type="button" onClick={() => setCancel(true)}><Icon name="x" size={16} /> Absagen</button>}
-            {ev.status === 'cancelled' && <button className="btn small" type="button" onClick={() => run((s, c) => A.restoreEvent(s, c, ev.id), 'Termin findet wieder statt')}>Absage zurücknehmen</button>}
+            {ev.status === 'cancelled' && <button className="btn small" type="button" onClick={() => run(call('restoreEvent', ev.id), 'Termin findet wieder statt')}>Absage zurücknehmen</button>}
             {ev.status === 'closed' && admin && <button className="btn small" type="button" onClick={() => setReopen(true)}>Abrechnung zurücknehmen</button>}
-            {!ev.originalSeriesDate && ev.status !== 'closed' && <button className="btn small ghost danger" type="button" onClick={() => { if (run((s, c) => A.deleteEvent(s, c, ev.id), 'Termin gelöscht')) go('kalender'); }}><Icon name="trash" size={16} /> Löschen</button>}
+            {!ev.originalSeriesDate && ev.status !== 'closed' && <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteEvent', ev.id), 'Termin gelöscht')) go('kalender'); }}><Icon name="trash" size={16} /> Löschen</button>}
           </div>
         )}
       </header>
@@ -87,7 +88,7 @@ function Participation({ ev }: { ev: StEvent }) {
               <Avatar member={m} size={32} ring={r} />
               <span className="p-name">{m.name}{m.id === me.id && ' (ich)'}</span>
               {admin && m.id !== me.id ? (
-                <select aria-label={`Antwort von ${m.name}`} value={r} onChange={(e) => run((s, c) => A.setRsvp(s, c, ev.id, m.id, e.target.value as 'yes'))}>
+                <select aria-label={`Antwort von ${m.name}`} value={r} onChange={(e) => run(call('setRsvp', ev.id, m.id, e.target.value as 'yes'))}>
                   <option value="yes">dabei</option><option value="no">kann nicht</option><option value="open">offen</option>
                 </select>
               ) : <span className={`p-state s-${r}`}>{label[r]}</span>}
@@ -164,7 +165,7 @@ function Expenses({ ev, onAdd }: { ev: StEvent; onAdd: () => void }) {
                 <Money cents={x.amount} className="l-amt" />
                 {can && (confirm === x.id ? (
                   <span className="inline-confirm">
-                    <button className="btn small danger" type="button" onClick={() => { run((s, c) => A.voidExpense(s, c, x.id), booked ? 'Auslage storniert (Gegenbuchung)' : 'Auslage gelöscht'); setConfirm(null); }}>Löschen</button>
+                    <button className="btn small danger" type="button" onClick={() => { run(call('voidExpense', x.id), booked ? 'Auslage storniert (Gegenbuchung)' : 'Auslage gelöscht'); setConfirm(null); }}>Löschen</button>
                     <button className="btn small ghost" type="button" onClick={() => setConfirm(null)}>Nein</button>
                   </span>
                 ) : <button className="icon-btn" type="button" aria-label="Auslage löschen" onClick={() => setConfirm(x.id)}><Icon name="trash" size={18} /></button>)}
@@ -197,16 +198,16 @@ function NoteItem({ n }: { n: Note }) {
           <div className="note-edit">
             <textarea id={`note-edit-${n.id}`} value={text} onChange={(e) => setText(e.target.value)} rows={3} />
             <div className="row-actions">
-              <button className="btn small primary" type="button" onClick={() => { if (run((s, c) => A.updateNote(s, c, n.id, { text }), 'Notiz gespeichert')) setEditing(false); }}>Speichern</button>
+              <button className="btn small primary" type="button" onClick={() => { if (run(call('updateNote', n.id, { text }), 'Notiz gespeichert')) setEditing(false); }}>Speichern</button>
               <button className="btn small ghost" type="button" onClick={() => { setText(n.text); setEditing(false); }}>Abbrechen</button>
             </div>
           </div>
         ) : <p>{n.text}</p>}
         {!editing && (
           <div className="note-actions">
-            <button className="link" type="button" onClick={() => run((s, c) => A.updateNote(s, c, n.id, { decision: !n.decision }))}>{n.decision ? 'Kein Beschluss' : 'Als Beschluss markieren'}</button>
+            <button className="link" type="button" onClick={() => run(call('updateNote', n.id, { decision: !n.decision }))}>{n.decision ? 'Kein Beschluss' : 'Als Beschluss markieren'}</button>
             {mine && <button className="link" type="button" onClick={() => setEditing(true)}>Bearbeiten</button>}
-            {mine && <button className="link danger" type="button" onClick={() => run((s, c) => A.deleteNote(s, c, n.id), 'Notiz gelöscht')}>Löschen</button>}
+            {mine && <button className="link danger" type="button" onClick={() => run(call('deleteNote', n.id), 'Notiz gelöscht')}>Löschen</button>}
           </div>
         )}
       </div>
@@ -221,7 +222,7 @@ function Notes({ ev }: { ev: StEvent }) {
   const [err, setErr] = useState<string | null>(null);
   const notes = state.notes.filter((n) => n.eventId === ev.id).sort((a, b) => Number(b.decision) - Number(a.decision) || a.createdAt.localeCompare(b.createdAt));
   const add = () => {
-    const r = tryRun((s, c) => A.addNote(s, c, ev.id, text, decision), decision ? 'Beschluss festgehalten' : 'Notiz gespeichert');
+    const r = tryRun(call('addNote', ev.id, text, decision), decision ? 'Beschluss festgehalten' : 'Notiz gespeichert');
     if (r.ok) { setText(''); setDecision(false); setErr(null); } else setErr(r.error);
   };
   return (
@@ -243,21 +244,21 @@ function Notes({ ev }: { ev: StEvent }) {
 }
 
 function PhotoTile({ m, onOpen }: { m: MediaAsset; onOpen: () => void }) {
-  const url = useMediaUrl(m.id, 'thumb');
+  const url = useMediaUrl(m.id, 'thumb', m.eventId);
   return (
     <button type="button" className="photo" onClick={onOpen} aria-label="Foto vergrößern" style={url ? { backgroundImage: `url(${url})` } : undefined}>
-      {url === null && <span className="photo-missing">Foto nur auf dem Gerät des Uploads</span>}
+      {url === null && <span className="photo-missing">Foto nicht verfügbar</span>}
     </button>
   );
 }
 
 function Lightbox({ m, onClose }: { m: MediaAsset | null; onClose: () => void }) {
   const { state, me, admin, run } = useStore();
-  const url = useMediaUrl(m?.id ?? 'none', 'full');
+  const url = useMediaUrl(m?.id ?? 'none', 'full', m?.eventId);
   if (!m) return null;
   return (
     <Sheet open onClose={onClose} title="Foto" wide
-      footer={(admin || m.uploaderId === me.id) ? <button className="btn danger" type="button" onClick={() => { if (run((s, c) => A.deleteMedia(s, c, m.id), 'Foto gelöscht')) { removeMediaBlobs(m.id); onClose(); } }}><Icon name="trash" size={16} /> Foto löschen</button> : undefined}>
+      footer={(admin || m.uploaderId === me.id) ? <button className="btn danger" type="button" onClick={() => { if (run(call('deleteMedia', m.id), 'Foto gelöscht')) { removeMediaBlobs(m.id); onClose(); } }}><Icon name="trash" size={16} /> Foto löschen</button> : undefined}>
       {url ? <img className="lightbox-img" src={url} alt={`Foto von ${memberName(state, m.uploaderId)}`} /> : <p className="muted-line">Foto wird geladen …</p>}
       <p className="fineprint">Hochgeladen von {memberName(state, m.uploaderId)} am {fmtDateTime(m.createdAt)} · {Math.round(m.bytes / 1024)} KB</p>
     </Sheet>
@@ -277,8 +278,8 @@ function Photos({ ev }: { ev: StEvent }) {
     let ok = 0;
     for (const f of list) {
       try {
-        const r = await processPhoto(f);
-        if (run((s, c) => A.addMedia(s, c, { ...r, eventId: ev.id }))) ok++;
+        const r = await processPhoto(f, ev.id);
+        if (run(call('addMedia', { ...r, eventId: ev.id }))) ok++;
       } catch (e) {
         toast(e instanceof UploadError ? e.message : `„${f.name}“ konnte nicht verarbeitet werden.`, 'error');
       }
@@ -310,7 +311,7 @@ function CancelSheet({ open, onClose, ev }: { open: boolean; onClose: () => void
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (open) { setReason(''); setErr(null); } }, [open]);
   const submit = () => {
-    const r = tryRun((s, c) => A.cancelEvent(s, c, ev.id, reason), 'Termin abgesagt');
+    const r = tryRun(call('cancelEvent', ev.id, reason), 'Termin abgesagt');
     if (r.ok) onClose(); else setErr(r.error);
   };
   return (
@@ -329,7 +330,7 @@ function ReopenSheet({ open, onClose, ev }: { open: boolean; onClose: () => void
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (open) setErr(null); }, [open]);
   const submit = () => {
-    const r = tryRun((s, c) => A.reopenEvent(s, c, ev.id), 'Abrechnung zurückgenommen – per Gegenbuchung');
+    const r = tryRun(call('reopenEvent', ev.id), 'Abrechnung zurückgenommen – per Gegenbuchung');
     if (r.ok) onClose(); else setErr(r.error);
   };
   return (
@@ -356,7 +357,7 @@ function CloseSheet({ open, onClose, ev }: { open: boolean; onClose: () => void;
   const pending = A.pendingExpenses(state, ev.id);
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const submit = () => {
-    const r = tryRun((s, c) => A.closeEvent(s, c, ev.id, sel), p.billable ? `Abgerechnet: ${euro(PAYOUT_PER_MEETING)} an ${sel.length} verteilt` : 'Termin abgeschlossen');
+    const r = tryRun(call('closeEvent', ev.id, sel), p.billable ? `Abgerechnet: ${euro(PAYOUT_PER_MEETING)} an ${sel.length} verteilt` : 'Termin abgeschlossen');
     if (r.ok) onClose(); else setErr(r.error);
   };
   const ordered = members.filter((m) => sel.includes(m.id));

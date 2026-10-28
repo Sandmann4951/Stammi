@@ -719,3 +719,24 @@ textarea.ios-input { resize: vertical; }
 .switch-wrap input:checked + .switch { background: var(--pos); }
 .switch-wrap input:checked + .switch::after { transform: translateX(18px); }
 .switch-wrap input:focus-visible + .switch { outline: 2.5px solid var(--gold); outline-offset: 2px; }
+
+/* ---------- Anmeldung ---------- */
+.auth-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 18px;
+  padding-block: max(28px, env(safe-area-inset-top, 0px)) 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(var(--band) 0 150px, var(--cream) 150px); }
+.auth-brand { display: flex; align-items: center; gap: 10px; color: var(--band-ink); font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.auth-brand .brand-mark { width: 38px; height: 38px; }
+.auth-page .invite-card { gap: 12px; }
+.auth-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; color: var(--ink-2); }
+.spinner { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--wine); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pw-wrap { position: relative; }
+.pw-wrap input:not([type=checkbox]) { padding-right: 92px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--paper-2); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.setup-box { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; background: var(--cream); }
+.setup-box summary { cursor: pointer; font-weight: 600; color: var(--wine-ink); }
+.setup-box[open] summary { margin-bottom: 10px; }
+.sync-dot { margin-left: auto; font-size: 12px; color: var(--gold); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sync-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: pulse 1s ease-in-out infinite alternate; }
+.sync-dot + .me-btn { margin-left: 8px; }
+@keyframes pulse { from { opacity: .3; } to { opacity: 1; } }

@@ -1,7 +1,13 @@
 // Fotos: Komprimierung im Browser + Ablage. In der Vorschau in IndexedDB,
-// später in einem privaten Supabase-Storage-Bucket mit signierten URLs.
+// online in einem privaten Supabase-Storage-Bucket mit signierten URLs.
 import { useEffect, useState } from 'react';
-import { uid } from './engine/util';
+import { uid } from '@engine/util';
+import { sb } from './remote';
+
+// Online: Fotos liegen im privaten Bucket `media` unter <gruppe>/<termin>/<id>-full|thumb.jpg
+let remoteCfg: { groupId: string } | null = null;
+export function configureMedia(cfg: { groupId: string } | null) { remoteCfg = cfg; }
+const storagePath = (eventId: string, id: string, size: 'full' | 'thumb') => `${remoteCfg!.groupId}/${eventId}/${id}-${size}.jpg`;
 
 export const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 export const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
@@ -58,7 +64,7 @@ async function resize(bmp: ImageBitmap, edge: number, quality: number): Promise<
 
 export class UploadError extends Error {}
 
-export async function processPhoto(file: File): Promise<{ id: string; width: number; height: number; bytes: number }> {
+export async function processPhoto(file: File, eventId: string): Promise<{ id: string; width: number; height: number; bytes: number }> {
   if (file.type && !file.type.startsWith('image/')) throw new UploadError(`„${file.name}“ ist kein Foto. Videos sind in dieser Version deaktiviert.`);
   if (file.size > MAX_INPUT_BYTES) throw new UploadError(`„${file.name}“ ist größer als 20 MB.`);
   let bmp: ImageBitmap;
@@ -67,23 +73,40 @@ export async function processPhoto(file: File): Promise<{ id: string; width: num
   const full = await resize(bmp, FULL_EDGE, 0.82);
   const thumb = await resize(bmp, THUMB_EDGE, 0.75);
   const id = uid('f');
-  try {
-    await put(id + ':full', full);
-    await put(id + ':thumb', thumb);
-  } catch {
-    throw new UploadError('Der Browser erlaubt hier keinen Fotospeicher (z. B. privates Fenster).');
+  if (remoteCfg) {
+    for (const [size, blob] of [['full', full], ['thumb', thumb]] as const) {
+      const { error } = await sb().storage.from('media').upload(storagePath(eventId, id, size), blob, { contentType: 'image/jpeg', upsert: false });
+      if (error) throw new UploadError(`„${file.name}“ konnte nicht hochgeladen werden. Bist du online?`);
+    }
+  } else {
+    try {
+      await put(id + ':full', full);
+      await put(id + ':thumb', thumb);
+    } catch {
+      throw new UploadError('Der Browser erlaubt hier keinen Fotospeicher (z. B. privates Fenster).');
+    }
   }
   const scale = Math.min(1, FULL_EDGE / Math.max(bmp.width, bmp.height));
   return { id, width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale), bytes: full.size };
 }
 
 const cache = new Map<string, string>();
-export function useMediaUrl(id: string, size: 'thumb' | 'full'): string | null | undefined {
+export function useMediaUrl(id: string, size: 'thumb' | 'full', eventId = ''): string | null | undefined {
   const key = id + ':' + size;
   const [url, setUrl] = useState<string | null | undefined>(cache.get(key));
   useEffect(() => {
     if (cache.has(key)) { setUrl(cache.get(key)); return; }
     let alive = true;
+    if (remoteCfg) {
+      if (id === 'none') { setUrl(null); return; }
+      // Signierte Links gelten 1 Stunde – genug für eine Sitzung, danach neu
+      sb().storage.from('media').createSignedUrl(storagePath(eventId, id, size), 3600).then(({ data }) => {
+        if (!alive) return;
+        if (data?.signedUrl) { cache.set(key, data.signedUrl); setTimeout(() => cache.delete(key), 50 * 60 * 1000); }
+        setUrl(data?.signedUrl ?? null);
+      });
+      return () => { alive = false; };
+    }
     get(key).then((b) => {
       if (!alive) return;
       if (!b) { setUrl(null); return; }
@@ -92,6 +115,6 @@ export function useMediaUrl(id: string, size: 'thumb' | 'full'): string | null |
       setUrl(u);
     }).catch(() => alive && setUrl(null));
     return () => { alive = false; };
-  }, [key]);
+  }, [key, eventId]);
   return url;
 }

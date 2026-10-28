@@ -27,11 +27,8 @@ jobs:
       - run: npm test
       - run: npm run test:db
       - name: Build
+        # Verbindungsdaten (öffentlich) stehen in .env.production
         run: npm run build
-        env:
-          # Repository → Settings → Secrets and variables → Actions → Variables
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

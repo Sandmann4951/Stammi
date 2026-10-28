@@ -1,71 +1,84 @@
 # Stammi
 
 Private Web-App für unseren Stammtisch: Termine und Zusagen, faire Kasse mit Topf und Auslagen, Chronik mit Notizen
-und Fotos, Ideenpool. Mobile-first, läuft im Browser. Für das Handy als Lesezeichen auf dem Home-Bildschirm ablegen.
+und Fotos, Ideenpool. Mobile-first, läuft im Browser. Auf dem Handy: Seite öffnen → Teilen → „Zum Home-Bildschirm“.
 
-Technik: React + TypeScript (Vite) · Supabase (Postgres, Auth, Storage, Edge Functions) · Hosting als statische Seite.
+**App:** https://sandmann4951.github.io/Stammi/ · **Vorschau mit Beispieldaten:** https://sandmann4951.github.io/Stammi/?vorschau
+
+Technik: React + TypeScript (Vite) · Supabase (Postgres, Auth, Storage, Edge Functions) · GitHub Pages.
 Architektur, Datenmodell, Rechte und Finanzlogik: [docs/KONZEPT.md](docs/KONZEPT.md).
 
-## Lokal starten
+## Einrichtung (einmalig)
+
+### 1. Supabase-Projekt verbinden
+Supabase-Dashboard → *Project Settings → Integrations → GitHub* → Repository `Sandmann4951/Stammi` verbinden:
+
+| Einstellung | Wert |
+|---|---|
+| Working directory | `.` |
+| Production branch | `main` |
+| Deploy to production | **an** |
+| Automatic branching | aus |
+
+Ab jetzt spielt Supabase bei jedem Merge auf `main` neue Migrationen und Edge Functions automatisch ein.
+
+### 2. Anmeldung einstellen (Supabase → Authentication)
+1. **Sign In / Providers → „Allow new users to sign up“: aus.** Konten entstehen nur über Einladungen.
+2. **Sign In / Providers → Email**: aktiv lassen.
+3. **URL Configuration** → *Site URL*: `https://sandmann4951.github.io/Stammi/` und dieselbe Adresse unter *Redirect URLs*.
+4. **Emails → SMTP Settings**: eigenen E-Mail-Versand eintragen (z. B. Brevo, kostenloses Kontingent). Ohne eigenes
+   SMTP stellt Supabase nur an Mitglieder des Supabase-Projektteams zu (max. 2 Mails pro Stunde). „Passwort vergessen“
+   würde für die Runde nicht funktionieren. Alles andere geht auch ohne.
+5. Optional: **Emails → Templates** → „Reset Password“ auf Deutsch übersetzen.
+
+### 3. Ersten Admin anlegen
+Weil die offene Registrierung aus ist, legst du dein eigenes Konto einmal von Hand an:
+*Authentication → Users → Add user → Create new user*: E-Mail, Passwort, **Auto Confirm User** an.
+Dann die App öffnen, anmelden und **„Ich richte die Gruppe ein“** wählen. Du wirst Admin. Alle anderen lädst du
+danach in der App über *Gruppe & Profil → Einladen* ein (Link per WhatsApp, 7 Tage gültig, einmal nutzbar).
+
+### 4. GitHub Pages
+*Settings → Pages → Source: GitHub Actions*. Jeder Push auf `main` testet, baut und veröffentlicht die App.
+
+Die öffentlichen Verbindungsdaten (Project URL, Publishable key) stehen in `.env.production`. Sie sind zum
+Veröffentlichen gedacht. Der **geheime Schlüssel** (`sb_secret_…`) kommt nie ins Repo und wird nicht gebraucht:
+Die Edge Functions bekommen ihn von Supabase automatisch.
+
+## Entwicklung
 
 ```bash
 npm install
-npm run dev          # Vorschau mit Beispieldaten im Browser (ohne Supabase)
-npm test             # Finanz- und Regel-Tests
-npm run test:db      # Schema, RLS und Buchungsregeln gegen echtes Postgres (PGlite)
+npm run dev              # Vorschau-Modus mit Beispieldaten (ohne Supabase)
+npm test                 # Fachlogik, Datenbank-Abbildung und Server-Ablauf (inkl. PGlite)
+npm run test:db          # Schema, RLS und Buchungsregeln gegen echtes Postgres (PGlite)
+npm run check:functions  # Edge Functions mit Deno prüfen
+npm run build:artifact   # Ein-Datei-Vorschau (immer Vorschau-Modus)
 ```
 
-Ohne `.env.local` läuft die App im **Vorschau-Modus**: Alle Daten liegen nur im eigenen Browser.
+Gegen das echte Supabase entwickeln: `.env.example` nach `.env.local` kopieren.
 
-## Einrichtung Supabase (einmalig)
+## Wie es zusammenspielt
 
-1. **Projekt anlegen** auf [supabase.com](https://supabase.com), Region **Frankfurt (eu-central-1)**. Das Datenbank-Passwort sicher notieren.
-2. **Auth → Providers → Email**: aktiv lassen, *Confirm email* an.
-3. **Auth → Sign In / Providers → „Allow new users to sign up“ ausschalten.** Konten entstehen nur über Einladungen.
-4. **Auth → URL Configuration**: *Site URL* = Adresse der veröffentlichten App, dieselbe Adresse auch unter *Redirect URLs*.
-5. **Auth → SMTP**: eigenen E-Mail-Versand eintragen, z. B. Brevo (kostenloses Kontingent) oder das Postfach eines eigenen
-   Mail-Anbieters. Ohne eigenes SMTP stellt Supabase Mails nur an Mitglieder des Supabase-Projektteams zu
-   (max. 2 pro Stunde). „Passwort vergessen“ würde für die Runde also nicht funktionieren.
-6. **Schlüssel für die App** (Project Settings → API): `Project URL` und `anon public key`.
-   Beide sind für den Browser gedacht und dürfen öffentlich sein. Den **service_role key nie** in die App, ins Repo
-   oder in einen Chat geben.
+```
+App (GitHub Pages) ── Anmeldung ──────► Supabase Auth
+        │            ── Lesen ──────────► Postgres (RLS: nur die eigene Gruppe)
+        │            ── Fotos ──────────► Storage (privat, befristete Links)
+        └─────────── ── Schreiben ──────► Edge Function `act` ─► Postgres (eine Transaktion)
+```
 
-## GitHub einrichten
-
-**Variables** (Settings → Secrets and variables → Actions → *Variables*): für den Build der App
-
-| Name | Wert |
-|---|---|
-| `VITE_SUPABASE_URL` | Project URL |
-| `VITE_SUPABASE_ANON_KEY` | anon public key |
-
-**Secrets** (gleiche Seite → *Secrets*): nur für den Workflow „Datenbank & Funktionen“
-
-| Name | Wert |
-|---|---|
-| `SUPABASE_ACCESS_TOKEN` | persönlicher Token aus supabase.com → Account → Access Tokens |
-| `SUPABASE_PROJECT_ID` | die Projekt-Referenz (Teil der Project URL vor `.supabase.co`) |
-| `SUPABASE_DB_PASSWORD` | Datenbank-Passwort aus Schritt 1 |
-
-Danach unter **Actions → „Datenbank & Funktionen (Supabase)“ → Run workflow** einmal starten. Das spielt Schema,
-Zugriffsregeln und Server-Funktionen ein. Der Workflow läuft bewusst nur manuell.
-
-## Veröffentlichen
-
-Der Workflow „Veröffentlichen“ baut bei jedem Push auf `main` die App, testet sie und lädt sie auf GitHub Pages
-(Settings → Pages → Source: **GitHub Actions**).
-
-> GitHub Pages ist im kostenlosen Plan nur für **öffentliche** Repos verfügbar. Ein öffentliches Repo ist hier
-> unbedenklich: Im Code stehen keine Geheimnisse, und die Daten schützt die Datenbank selbst. Alternative bei privatem
-> Repo: Cloudflare Pages oder Netlify (beide kostenlos, Build-Befehl `npm run build`, Ausgabeordner `dist`,
-> dieselben zwei Variablen).
+Jede Aktion wird in der App sofort angezeigt und parallel an `act` geschickt. Der Server rechnet mit derselben Logik
+(`supabase/functions/_shared/engine`) und denselben IDs nach und gibt den verbindlichen Stand zurück. Lehnt er ab,
+lädt die App neu und zeigt den Grund. Ändert jemand anderes etwas, aktualisiert sich die App automatisch.
 
 ## Projektstruktur
 
 ```
-src/engine/      Fachlogik (Kasse, Termine, Rechte) + Tests – läuft im Browser und in der Edge Function
-src/views/       Seiten: Übersicht, Kalender/Chronik, Termin, Kasse, Ideen, Gruppe
-supabase/        Migrationen (Schema + RLS + Storage), Tests, später Edge Functions
-docs/            Konzept
-scripts/         Hilfsskripte (Ein-Datei-Vorschau)
+src/                               App: Seiten, Anmeldung, Supabase-Anbindung
+supabase/functions/_shared/engine  Fachlogik + Tests (App und Server)
+supabase/functions/_shared/db      Abbildung App ⇄ Tabellen, Schreiblogik + Tests
+supabase/functions/act             Edge Function: alle Schreibaktionen
+supabase/functions/accept-invite   Edge Function: Beitritt per Einladungslink
+supabase/migrations                Schema, RLS, Storage, Realtime
+supabase/tests                     Schema-/Sicherheitstests (PGlite)
+docs/                              Konzept
 ```

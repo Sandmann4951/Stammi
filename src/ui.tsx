@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import type { Member, State, StEvent } from './engine/types';
-import { dayCount, diffDays, endOf, euro, parseEuro, toDate, WEEKDAYS_SHORT, weekdayMon0 } from './engine/util';
+import type { Member, State, StEvent } from '@engine/types';
+import { dayCount, diffDays, endOf, euro, parseEuro, toDate, WEEKDAYS_SHORT, weekdayMon0 } from '@engine/util';
 import { useStore } from './store';
 
 // ---------- Icons (inline, 24px Raster) ----------

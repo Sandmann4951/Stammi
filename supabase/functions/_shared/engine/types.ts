@@ -15,6 +15,7 @@ export interface Member {
   status: 'active' | 'inactive';
   joinedAt: ISODateTime;
   order: number; // deterministische Reihenfolge, u. a. für Rest-Cent-Verteilung
+  userId?: string; // Verknüpfung zum Login (Supabase Auth)
 }
 
 export interface Invitation {

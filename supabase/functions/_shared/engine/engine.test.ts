@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import * as A from './actions';
-import * as finance from './finance';
-import { breakdown, cycleInfo, ledgerCsv, potBalance, rawBalances, standings, suggestPayments } from './finance';
-import { POT, type State } from './types';
-import { dayCount, daysOf, parseEuro, splitCents } from './util';
+import * as A from './actions.ts';
+import * as finance from './finance.ts';
+import { breakdown, cycleInfo, ledgerCsv, potBalance, rawBalances, standings, suggestPayments } from './finance.ts';
+import { POT, type State } from './types.ts';
+import { dayCount, daysOf, parseEuro, recordIds, replayIds, splitCents } from './util.ts';
 
 const NOW = new Date('2026-10-27T18:00:00');
 const ctxOf = (actor: string, now = NOW): A.Ctx => ({ actor, now });
@@ -314,5 +314,25 @@ describe('Endzeit & ganztägig', () => {
     const all = A.createEvent(s, ctxOf(ids[1]), { ...base, endDate: '2026-11-22', time: '18:30', endTime: '12:00', allDay: true });
     const ev = all.state.events.find((e) => e.id === all.id)!;
     expect([ev.time, ev.endTime, ev.allDay]).toEqual(['', undefined, true]);
+  });
+});
+
+describe('ID-Wiedergabe (App rechnet vor, Server rechnet nach)', () => {
+  it('Server erzeugt mit den IDs der App exakt dieselben Einträge', () => {
+    const { s, admin, ids } = setup();
+    const ev = series(s)[0];
+    const fn = (st: State) => A.closeEvent(A.addExpense(st, ctxOf(ids[1]), { eventId: ev.id, payerId: ids[1], amount: 4000, description: 'Rechnung' }), ctxOf(admin), ev.id, ids.slice(0, 3));
+    const client = recordIds(() => fn(s));
+    const server = replayIds(client.ids, () => fn(s));
+    expect(server).toEqual(client.result);
+    expect(client.ids.length).toBeGreaterThan(2);
+  });
+  it('ungültige oder fremde Kennungen werden abgelehnt', () => {
+    const { s, ids } = setup();
+    const ev = series(s)[0];
+    expect(() => replayIds(['X;drop'], () => A.addNote(s, ctxOf(ids[1]), ev.id, 'x', false))).toThrow(/Ungültige Kennung/);
+    expect(() => replayIds(['b12345678'], () => A.addNote(s, ctxOf(ids[1]), ev.id, 'x', false))).toThrow(/Ungültige Kennung/);
+    const t = A.addMedia(s, ctxOf(ids[1]), { id: 'f12345678', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+    expect(() => A.addMedia(t, ctxOf(ids[2]), { id: 'f12345678', eventId: ev.id, width: 10, height: 10, bytes: 100 })).toThrow(/Foto-Kennung/);
   });
 });

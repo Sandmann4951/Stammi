@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import * as A from '../engine/actions';
-import type { Idea, IdeaStatus } from '../engine/types';
-import { endOf, uid } from '../engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import type { Idea, IdeaStatus } from '@engine/types';
+import { endOf, uid } from '@engine/util';
 import { EventFormSheet } from '../forms';
 import { go, useStore } from '../store';
 import { Avatar, Empty, Field, fmtDateTime, fmtRange, timeText, Icon, memberName, Pill, Section, Segmented, Sheet } from '../ui';
@@ -16,7 +17,7 @@ function IdeaSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (open) { setTitle(''); setDesc(''); setErr(null); } }, [open]);
   const submit = () => {
-    const r = tryRun((s, c) => A.addIdea(s, c, { title, description: desc }), 'Idee gespeichert');
+    const r = tryRun(call('addIdea', { title, description: desc }), 'Idee gespeichert');
     if (r.ok) { onClose(); go('idee-' + r.value.id); } else setErr(r.error);
   };
   return (
@@ -103,9 +104,9 @@ function Votes({ idea }: { idea: Idea }) {
   return (
     <div className="votes" role="group" aria-label="Bewerten">
       <button type="button" className={`vote up${mine === 1 ? ' on' : ''}`} aria-pressed={mine === 1} title={voters(1) || undefined}
-        onClick={() => run((s, c) => A.voteIdea(s, c, idea.id, 1))}><Icon name="up" size={18} /> <b>{sc.up}</b> <span>Gefällt mir</span></button>
+        onClick={() => run(call('voteIdea', idea.id, 1))}><Icon name="up" size={18} /> <b>{sc.up}</b> <span>Gefällt mir</span></button>
       <button type="button" className={`vote down${mine === -1 ? ' on' : ''}`} aria-pressed={mine === -1} title={voters(-1) || undefined}
-        onClick={() => run((s, c) => A.voteIdea(s, c, idea.id, -1))}><Icon name="down" size={18} /> <b>{sc.down}</b> <span>Eher nicht</span></button>
+        onClick={() => run(call('voteIdea', idea.id, -1))}><Icon name="down" size={18} /> <b>{sc.down}</b> <span>Eher nicht</span></button>
     </div>
   );
 }
@@ -127,7 +128,7 @@ function Comments({ idea }: { idea: Idea }) {
                 <div className="note-body">
                   <div className="note-head"><strong>{author?.name}</strong>{c.authorId === idea.creatorId && <span className="decision-tag">Ideengeber</span>}<span className="note-time">{fmtDateTime(c.createdAt)}{c.updatedAt !== c.createdAt && ' · bearbeitet'}</span></div>
                   {edit?.id === c.id ? (
-                    <form className="note-edit" onSubmit={(e) => { e.preventDefault(); if (run((s, ctx) => A.updateIdeaComment(s, ctx, c.id, edit.text))) setEdit(null); }}>
+                    <form className="note-edit" onSubmit={(e) => { e.preventDefault(); if (run(call('updateIdeaComment', c.id, edit.text))) setEdit(null); }}>
                       <textarea id={`kc-${c.id}`} value={edit.text} onChange={(e) => setEdit({ id: c.id, text: e.target.value })} rows={2} />
                       <div className="row-actions"><button className="btn small primary" type="submit">Speichern</button><button className="btn small ghost" type="button" onClick={() => setEdit(null)}>Abbrechen</button></div>
                     </form>
@@ -135,7 +136,7 @@ function Comments({ idea }: { idea: Idea }) {
                   {edit?.id !== c.id && (c.authorId === me.id || admin) && (
                     <div className="note-actions">
                       {c.authorId === me.id && <button className="link" type="button" onClick={() => setEdit({ id: c.id, text: c.text })}>Bearbeiten</button>}
-                      <button className="link danger" type="button" onClick={() => run((s, ctx) => A.deleteIdeaComment(s, ctx, c.id), 'Kommentar gelöscht')}>Löschen</button>
+                      <button className="link danger" type="button" onClick={() => run(call('deleteIdeaComment', c.id), 'Kommentar gelöscht')}>Löschen</button>
                     </div>
                   )}
                 </div>
@@ -144,7 +145,7 @@ function Comments({ idea }: { idea: Idea }) {
           })}
         </ul>
       )}
-      <form className="note-compose" onSubmit={(e) => { e.preventDefault(); if (tryRun((s, c) => A.addIdeaComment(s, c, idea.id, text)).ok) setText(''); }}>
+      <form className="note-compose" onSubmit={(e) => { e.preventDefault(); if (tryRun(call('addIdeaComment', idea.id, text)).ok) setText(''); }}>
         <Avatar member={me} size={32} />
         <div>
           <textarea id={`kc-new-${idea.id}`} value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={1000}
@@ -169,7 +170,7 @@ export function IdeaDetail({ id }: { id: string }) {
   const owner = A.canEditIdea(state, me.id, idea);
   const creator = state.members.find((m) => m.id === idea.creatorId);
   const ev = state.events.find((e) => e.id === idea.eventId);
-  const upd = (p: Parameters<typeof A.updateIdea>[3], msg?: string) => run((s, c) => A.updateIdea(s, c, idea.id, p), msg);
+  const upd = (p: Parameters<typeof A.updateIdea>[3], msg?: string) => run(call('updateIdea', idea.id, p), msg);
   const addItem = () => { if (!item.trim()) return; upd({ checklist: [...idea.checklist, { id: uid('c'), text: item.trim(), done: false }] }); setItem(''); };
   const upcoming = state.events.filter((e) => e.status === 'planned' && endOf(e) >= today).sort(sortEvents).slice(0, 10);
   const statusTone = { open: 'gold', planned: 'wine', done: 'neutral' } as const;
@@ -194,7 +195,7 @@ export function IdeaDetail({ id }: { id: string }) {
             {(owner || admin) && (
               <div className="dh-actions">
                 {owner && <button className="btn small" type="button" onClick={() => { setTitle(idea.title); setDesc(idea.description); setEditing(true); }}><Icon name="edit" size={16} /> Bearbeiten</button>}
-                <button className="btn small ghost danger" type="button" onClick={() => { if (run((s, c) => A.deleteIdea(s, c, idea.id), 'Idee gelöscht')) go('ideen'); }}><Icon name="trash" size={16} /> Löschen</button>
+                <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteIdea', idea.id), 'Idee gelöscht')) go('ideen'); }}><Icon name="trash" size={16} /> Löschen</button>
               </div>
             )}
             {!owner && <p className="fineprint"><Icon name="lock" size={14} /> Bearbeiten kann nur {creator?.name}. Du kannst bewerten und kommentieren.</p>}
@@ -251,7 +252,7 @@ export function IdeaDetail({ id }: { id: string }) {
       <Comments idea={idea} />
 
       <EventFormSheet open={plan} onClose={() => setPlan(false)} type="event" defaults={{ title: idea.title, description: idea.description, ideaId: idea.id }}
-        onCreated={(eid) => { run((s, c) => A.updateIdea(s, c, idea.id, { eventId: eid, status: 'planned' })); go('termin-' + eid); }} />
+        onCreated={(eid) => { run(call('updateIdea', idea.id, { eventId: eid, status: 'planned' })); go('termin-' + eid); }} />
       <Sheet open={link} onClose={() => setLink(false)} title="Mit Termin verknüpfen">
         <ul className="pick-list">
           {upcoming.map((e) => (

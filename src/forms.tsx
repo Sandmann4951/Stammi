@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import * as A from './engine/actions';
-import { activeMembers, payerRanking } from './engine/finance';
-import type { EventType, StEvent } from './engine/types';
-import { addDays, centsToInput, diffDays, euro } from './engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import { activeMembers, payerRanking } from '@engine/finance';
+import type { EventType, StEvent } from '@engine/types';
+import { addDays, centsToInput, diffDays, euro } from '@engine/util';
 import { useStore } from './store';
 import { Avatar, Field, fmtRange, Icon, memberName, MoneyInput, Sheet, useMoneyField } from './ui';
 
@@ -28,7 +29,7 @@ export function ExpenseSheet({ open, onClose, eventId }: { open: boolean; onClos
   const submit = () => {
     setTouched(true);
     if (!amount.valid || !desc.trim() || !ev) return;
-    const r = tryRun((s, c) => A.addExpense(s, c, { eventId: ev, payerId: payer, amount: amount.cents!, description: desc }), 'Auslage gespeichert');
+    const r = tryRun(call('addExpense', { eventId: ev, payerId: payer, amount: amount.cents!, description: desc }), 'Auslage gespeichert');
     if (r.ok) onClose(); else setErr(r.error);
   };
   return (
@@ -91,7 +92,7 @@ export function SettlementSheet({ open, onClose, preset }: { open: boolean; onCl
   const submit = () => {
     setTouched(true);
     if (!amount.valid || from === to) return;
-    const r = tryRun((s, c) => A.addSettlement(s, c, { fromId: from, toId: to, amount: amount.cents!, date, note }), 'Zahlung eingetragen');
+    const r = tryRun(call('addSettlement', { fromId: from, toId: to, amount: amount.cents!, date, note }), 'Zahlung eingetragen');
     if (r.ok) onClose(); else setErr(r.error);
   };
   const fromM = members.find((m) => m.id === from), toM = members.find((m) => m.id === to);
@@ -200,10 +201,10 @@ export function EventFormSheet({ open, onClose, event, defaults, onCreated, type
       endTime: f.allDay ? undefined : f.et || undefined, allDay: isEvent && f.allDay ? true : undefined, location: f.location, description: f.description,
     };
     if (event) {
-      const r = tryRun((s, c) => A.updateEvent(s, c, event.id, payload), 'Termin aktualisiert');
+      const r = tryRun(call('updateEvent', event.id, payload), 'Termin aktualisiert');
       if (r.ok) onClose(); else setErr(r.error);
     } else {
-      const r = tryRun((s, c) => A.createEvent(s, c, { ...payload, type: f.type, ideaId: defaults?.ideaId }), 'Termin angelegt');
+      const r = tryRun(call('createEvent', { ...payload, type: f.type, ideaId: defaults?.ideaId }), 'Termin angelegt');
       if (r.ok) { onClose(); onCreated?.(r.value.id); } else setErr(r.error);
     }
   };

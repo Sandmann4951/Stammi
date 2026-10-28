@@ -1,5 +1,5 @@
-import { POT, type Cents, type EntryKind, type LedgerEntry, type Member, type State } from './types';
-import { splitCents } from './util';
+import { POT, type Cents, type EntryKind, type LedgerEntry, type Member, type State } from './types.ts';
+import { splitCents } from './util.ts';
 
 /*
  * Bilanzlogik (eindeutig definiert, siehe auch „So wird gerechnet“ in der App)

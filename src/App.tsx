@@ -1,4 +1,4 @@
-import { endOf, localToday } from './engine/util';
+import { endOf, localToday } from '@engine/util';
 import { useStore, useRoute, type Route } from './store';
 import { Avatar, Icon } from './ui';
 import { Dashboard } from './views/Dashboard';
@@ -29,13 +29,28 @@ function View({ r }: { r: Route }) {
     case 'mehr': return <More />;
     case 'termin': return <EventDetail id={r.id} />;
     case 'idee': return <IdeaDetail id={r.id} />;
-    case 'einladung': return <InviteAccept token={r.token} />;
+    case 'einladung': return <InviteRoute token={r.token} />;
     default: return <Dashboard />;
   }
 }
 
+function InviteRoute({ token }: { token: string }) {
+  const { backend, me } = useStore();
+  if (backend.kind !== 'remote') return <InviteAccept token={token} />;
+  return (
+    <div className="page invite-page">
+      <div className="invite-card">
+        <span className="eyebrow">Einladung</span>
+        <h1>Du bist schon dabei</h1>
+        <p>Du bist bereits als <b>{me.name}</b> angemeldet. Den Einladungslink brauchst du nicht mehr.</p>
+        <a className="btn primary block" href="#uebersicht">Zur Übersicht</a>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
-  const { state, me, toasts, dismiss } = useStore();
+  const { state, me, toasts, dismiss, syncing } = useStore();
   const route = useRoute();
   const tab = activeTab(route);
   const pending = state.events.filter((e) => e.status === 'planned' && endOf(e) < localToday()).length;
@@ -53,6 +68,7 @@ export function App() {
               <a key={t.hash} href={`#${t.hash}`} className={tab === t.hash ? 'on' : ''} aria-current={tab === t.hash ? 'page' : undefined}>{t.label}</a>
             ))}
           </nav>
+          {syncing && <span className="sync-dot" role="status" aria-label="Speichert">Speichert …</span>}
           <a className={`me-btn${tab === 'mehr' ? ' on' : ''}`} href="#mehr" aria-label={`Profil und Gruppe (${me.name})`}>
             <Avatar member={me} size={34} />
           </a>

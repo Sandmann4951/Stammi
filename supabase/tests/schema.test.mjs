@@ -1,26 +1,10 @@
 // Prüft Schema, RLS und Journal-Regeln gegen echtes Postgres (PGlite, läuft ohne Supabase-Konto).
-import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
-const mig = (f) => readFileSync(new URL('../migrations/' + f, import.meta.url), 'utf8');
-const db = new PGlite();
+import { makeDb } from './pg-env.mjs';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } };
 const expectErr = async (sql, re, m) => { try { await db.exec(sql); ok(false, m + ' (kein Fehler!)'); } catch (e) { ok(re.test(e.message), m + ' → ' + e.message.split('\n')[0]); } };
 
-// --- Supabase-Umgebung nachbilden ---
-await db.exec(`
-  create role anon nologin; create role authenticated nologin;
-  create schema auth; create table auth.users (id uuid primary key);
-  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated;
-  grant usage on schema public to anon, authenticated;
-  create schema storage;
-  create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-  create table storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text);
-  alter table storage.objects enable row level security;
-  grant usage on schema storage to authenticated; grant select, insert on storage.objects to authenticated;
-`);
-try { await db.exec(mig('20261028000001_schema.sql')); await db.exec(mig('20261028000002_storage.sql')); } catch (e) { console.log('MIGRATION FEHLER:', e.message, e.position); process.exit(1); }
+const db = await makeDb();
 console.log('Migrationen laufen durch.');
 
 const U1 = '11111111-1111-1111-1111-111111111111', U2 = '22222222-2222-2222-2222-222222222222', U3 = '33333333-3333-3333-3333-333333333333';

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import * as A from '../engine/actions';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
 import {
   activeMembers, breakdown, CATEGORY_LABEL, cycleInfo, ledgerCsv, reversedIds, standings, suggestPayments,
   type Category, type Payment,
-} from '../engine/finance';
-import { POT, type LedgerEntry } from '../engine/types';
-import { euro, parseEuro } from '../engine/util';
+} from '@engine/finance';
+import { POT, type LedgerEntry } from '@engine/types';
+import { euro, parseEuro } from '@engine/util';
 import { ExpenseSheet, SettlementSheet } from '../forms';
 import { useStore } from '../store';
 import { Avatar, copyText, Empty, Field, fmtDate, Icon, memberName, MemberPicker, Money, MoneyInput, Pill, Section, Segmented, Sheet, useMoneyField } from '../ui';
@@ -146,7 +147,7 @@ function AdminStart() {
   const { state, run } = useStore();
   const n = activeMembers(state).length;
   return (
-    <button className="admin-card hot" type="button" onClick={() => run(A.startCashPool, 'Kasse gestartet')}>
+    <button className="admin-card hot" type="button" onClick={() => run(call('startCashPool'), 'Kasse gestartet')}>
       <Icon name="mug" /><span><strong>Kasse starten</strong><small>{n} × 20 € = {euro(n * 2000)} in den Topf, je 20 € Beitrag</small></span>
     </button>
   );
@@ -204,7 +205,7 @@ function Journal() {
       {list.length > limit && <button className="btn ghost block" type="button" onClick={() => setLimit(limit + 50)}>Ältere Buchungen zeigen ({list.length - limit})</button>}
 
       <Sheet open={!!storno} onClose={() => setStorno(null)} title="Buchung stornieren"
-        footer={<button className="btn danger block" type="button" onClick={() => { const r = tryRun((s, c) => A.reverseEntry(s, c, storno!.id, reason), 'Storniert – Gegenbuchung angelegt'); if (r.ok) setStorno(null); else setErr(r.error); }}>Gegenbuchung anlegen</button>}>
+        footer={<button className="btn danger block" type="button" onClick={() => { const r = tryRun(call('reverseEntry', storno!.id, reason), 'Storniert – Gegenbuchung angelegt'); if (r.ok) setStorno(null); else setErr(r.error); }}>Gegenbuchung anlegen</button>}>
         <p>„{storno?.text}“ wird durch eine Gegenbuchung neutralisiert. Beide bleiben im Journal sichtbar.</p>
         <Field label="Grund (optional)"><input id="storno-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={80} /></Field>
         {err && <p className="form-error" role="alert">{err}</p>}
@@ -236,8 +237,8 @@ function SpecialSheet({ open, onClose }: { open: boolean; onClose: () => void })
   const submit = () => {
     if (!amount.valid) { setErr('Bitte einen Betrag eingeben.'); return; }
     const r = dir === 'in'
-      ? tryRun((s, c) => A.specialIn(s, c, { amount: amount.cents!, mode, memberIds: sel, holderId: holder, reason, date }), 'Sonderzuführung gebucht')
-      : tryRun((s, c) => A.specialOut(s, c, { amount: amount.cents!, recipientIds: sel, reason, date }), 'Sonderausschüttung gebucht');
+      ? tryRun(call('specialIn', { amount: amount.cents!, mode, memberIds: sel, holderId: holder, reason, date }), 'Sonderzuführung gebucht')
+      : tryRun(call('specialOut', { amount: amount.cents!, recipientIds: sel, reason, date }), 'Sonderausschüttung gebucht');
     if (r.ok) onClose(); else setErr(r.error);
   };
   const n = dir === 'out' ? sel.length : mode === 'all' ? members.length : mode === 'selected' ? sel.length : 1;
@@ -312,7 +313,7 @@ function OpeningSheet({ open, onClose }: { open: boolean; onClose: () => void })
     if (out.length) setRows(out);
   };
   const submit = () => {
-    const r = tryRun((s, c) => A.importOpening(s, c, claims, date), 'Anfangsbestand übernommen');
+    const r = tryRun(call('importOpening', claims, date), 'Anfangsbestand übernommen');
     if (r.ok) onClose(); else setErr(r.error);
   };
   return (

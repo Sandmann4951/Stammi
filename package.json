@@ -5,13 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p . && vite build",
-    "build:artifact": "SINGLE=1 vite build && node scripts/build-artifact.mjs",
+    "build:artifact": "SINGLE=1 VITE_PREVIEW=1 vite build && node scripts/build-artifact.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -p .",
-    "test:db": "node supabase/tests/schema.test.mjs"
+    "test:db": "node supabase/tests/schema.test.mjs",
+    "check:functions": "cd supabase/functions && DENO_CERT=${DENO_CERT:-} npx -y deno@2.1.4 check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

@@ -6,9 +6,9 @@ import {
   DomainError, POT,
   type Attendance, type Cents, type EventType, type ISODate, type Idea, type IdeaComment, type IdeaStatus, type Leg,
   type LedgerEntry, type Member, type Rsvp, type SeriesRule, type State, type StEvent,
-} from './types';
-import { activeEntries, activeMembers, cycleInfo, potBalance, CONTRIBUTION_PER_MEMBER, MEETINGS_PER_CYCLE, PAYOUT_PER_MEETING } from './finance';
-import { addDays, diffDays, endOf, euro, localToday, MAX_EVENT_DAYS, seedFrom, splitCents, uid } from './util';
+} from './types.ts';
+import { activeEntries, activeMembers, cycleInfo, potBalance, CONTRIBUTION_PER_MEMBER, MEETINGS_PER_CYCLE, PAYOUT_PER_MEETING } from './finance.ts';
+import { addDays, diffDays, endOf, euro, ID_RE, localToday, MAX_EVENT_DAYS, seedFrom, splitCents, uid } from './util.ts';
 
 export interface Ctx {
   actor: string;
@@ -82,12 +82,14 @@ function reverse(state: State, ctx: Ctx, entryId: string, text: string): State {
 }
 
 // ---------- Gruppe & Kasse ----------
-export function createGroup(name: string, admin: { name: string; email: string }, now: Date): State {
+export function createGroup(name: string, admin: { name: string; email: string; userId?: string }, now: Date): State {
+  if (!admin.name.trim() || admin.name.trim().length > 30) throw new DomainError('Bitte einen Anzeigenamen mit höchstens 30 Zeichen wählen.');
+  if (name.trim().length > 60) throw new DomainError('Der Gruppenname ist zu lang (max. 60 Zeichen).');
   const adminId = uid('m');
   return {
     schema: 2,
     group: { id: uid('g'), name: name.trim() || 'Stammtisch', createdAt: now.toISOString() },
-    members: [{ id: adminId, name: admin.name.trim(), email: admin.email.trim(), role: 'admin', status: 'active', joinedAt: now.toISOString(), order: 0 }],
+    members: [{ id: adminId, name: admin.name.trim(), email: admin.email.trim(), role: 'admin', status: 'active', joinedAt: now.toISOString(), order: 0, userId: admin.userId }],
     invitations: [], series: null, events: [], attendance: [], expenses: [], notes: [], media: [], ideas: [], ideaComments: [], ideaVotes: [], ledger: [],
     currentUserId: adminId,
   };
@@ -516,7 +518,10 @@ export function deleteNote(state: State, ctx: Ctx, id: string): State {
 }
 export function addMedia(state: State, ctx: Ctx, m: { id: string; eventId: string; width: number; height: number; bytes: number }): State {
   requireMember(state, ctx);
-  return { ...state, media: [...state.media, { ...m, uploaderId: ctx.actor, createdAt: iso(ctx) }] };
+  getEvent(state, m.eventId);
+  if (!ID_RE.test(m.id) || state.media.some((x) => x.id === m.id)) throw new DomainError('Ungültige Foto-Kennung.');
+  if (!(m.bytes > 0 && m.bytes <= 5 * 1024 * 1024)) throw new DomainError('Das Foto ist zu groß (max. 5 MB nach Verkleinerung).');
+  return { ...state, media: [...state.media, { id: m.id, eventId: m.eventId, width: Math.round(m.width), height: Math.round(m.height), bytes: Math.round(m.bytes), uploaderId: ctx.actor, createdAt: iso(ctx) }] };
 }
 export function deleteMedia(state: State, ctx: Ctx, id: string): State {
   const m = state.media.find((x) => x.id === id);
@@ -593,12 +598,13 @@ export function planIdea(state: State, ctx: Ctx, ideaId: string, input: Omit<Eve
 }
 
 // ---------- Mitglieder & Einladungen ----------
-export function inviteMember(state: State, ctx: Ctx, email: string): { state: State; token: string } {
+/** `token`: in der Supabase-Version der SHA-256-Hash des Links (der Server erzeugt den Link selbst). */
+export function inviteMember(state: State, ctx: Ctx, email: string, token?: string): { state: State; token: string } {
   requireAdmin(state, ctx);
   const e = email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new DomainError('Bitte eine gültige E-Mail-Adresse eingeben.');
   if (state.members.some((m) => m.email.toLowerCase() === e && m.status === 'active')) throw new DomainError('Diese Person ist schon Mitglied.');
-  const token = (uid() + uid()).replace(/[^a-z0-9]/g, '').slice(0, 24);
+  token = token ?? (uid() + uid()).replace(/[^a-z0-9]/g, '').slice(0, 24);
   const inv = { id: uid('e'), token, email: e, createdAt: iso(ctx), expiresAt: new Date(ctx.now.getTime() + INVITE_DAYS * 86400000).toISOString(), createdBy: ctx.actor };
   return { state: { ...state, invitations: [inv, ...state.invitations] }, token };
 }
@@ -612,7 +618,7 @@ export function inviteState(inv: { usedAt?: string; revokedAt?: string; expiresA
   if (new Date(inv.expiresAt) < now) return 'expired';
   return 'open';
 }
-export function acceptInvite(state: State, now: Date, token: string, input: { name: string; email: string; password: string }): { state: State; memberId: string } {
+export function acceptInvite(state: State, now: Date, token: string, input: { name: string; email: string; password: string; userId?: string }): { state: State; memberId: string } {
   const inv = state.invitations.find((i) => i.token === token);
   if (!inv) throw new DomainError('Diese Einladung gibt es nicht.');
   const st = inviteState(inv, now);
@@ -623,7 +629,7 @@ export function acceptInvite(state: State, now: Date, token: string, input: { na
   if (input.password.length < 8) throw new DomainError('Das Passwort braucht mindestens 8 Zeichen.');
   if (state.members.some((m) => m.name.toLowerCase() === input.name.trim().toLowerCase())) throw new DomainError('Dieser Anzeigename ist schon vergeben.');
   const id = uid('m');
-  const m: Member = { id, name: input.name.trim(), email: (input.email || inv.email).trim(), role: 'member', status: 'active', joinedAt: now.toISOString(), order: state.members.reduce((a, x) => Math.max(a, x.order), 0) + 1 };
+  const m: Member = { id, name: input.name.trim(), email: (input.email || inv.email).trim(), role: 'member', status: 'active', joinedAt: now.toISOString(), order: state.members.reduce((a, x) => Math.max(a, x.order), 0) + 1, userId: input.userId };
   return {
     state: { ...state, members: [...state.members, m], invitations: state.invitations.map((i) => (i.id === inv.id ? { ...i, usedAt: now.toISOString(), usedBy: id } : i)) },
     memberId: id,

@@ -1,8 +1,8 @@
 // Beispieldaten für die Vorschau. Alle Termine werden relativ zu „heute“ erzeugt,
 // damit die Demo immer frisch aussieht. Gebucht wird ausschließlich über die echten Aktionen.
-import * as A from './engine/actions';
-import type { State } from './engine/types';
-import { addDays, localToday, weekdayMon0 } from './engine/util';
+import * as A from '@engine/actions';
+import type { State } from '@engine/types';
+import { addDays, localToday, weekdayMon0 } from '@engine/util';
 
 export function demoState(now = new Date()): State {
   const t = localToday(now);

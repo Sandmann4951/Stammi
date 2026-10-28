@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import * as A from '../engine/actions';
-import type { SeriesRule, State, StEvent } from '../engine/types';
-import { addDays, daysOf, endOf, toDate, weekdayMon0, WEEKDAYS, WEEKDAYS_SHORT } from '../engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import type { SeriesRule, State, StEvent } from '@engine/types';
+import { addDays, daysOf, endOf, toDate, weekdayMon0, WEEKDAYS, WEEKDAYS_SHORT } from '@engine/util';
 import { EventFormSheet } from '../forms';
 import { go, useStore } from '../store';
 import { Empty, Field, fmtDate, fmtRange, Icon, monthLabel, Segmented, Sheet } from '../ui';
@@ -20,7 +21,7 @@ export function SeriesSheet({ open, onClose }: { open: boolean; onClose: () => v
   useEffect(() => { if (open) { setF(state.series ?? { startDate: today, intervalWeeks: 2, time: '19:00', title: 'Stammtisch' }); setErr(null); } }, [open]); // eslint-disable-line
   const preview = A.seriesDates(f, addDays(today, 7 * f.intervalWeeks * 4 + 7)).filter((d) => d >= today).slice(0, 4);
   const submit = () => {
-    const r = tryRun((s, c) => A.updateSeries(s, c, { ...f, intervalWeeks: Number(f.intervalWeeks) }), 'Serie gespeichert');
+    const r = tryRun(call('updateSeries', { ...f, intervalWeeks: Number(f.intervalWeeks) }), 'Serie gespeichert');
     if (r.ok) onClose(); else setErr(r.error);
   };
   return (

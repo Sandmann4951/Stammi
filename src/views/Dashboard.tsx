@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import * as A from '../engine/actions';
-import { breakdown, cycleInfo, PAYOUT_PER_MEETING } from '../engine/finance';
-import { euro } from '../engine/util';
+import * as A from '@engine/actions';
+import { call } from '@engine/registry';
+import { breakdown, cycleInfo, PAYOUT_PER_MEETING } from '@engine/finance';
+import { euro } from '@engine/util';
 import { ExpenseSheet } from '../forms';
 import { useMediaUrl } from '../media';
 import { go, useStore } from '../store';
@@ -9,7 +10,7 @@ import { Avatar, DateBlock, Empty, fmtDate, fmtRange, Icon, Money, Section, time
 import { AttendeeStrip, CycleDots, LocationEditor, nextEvent, openClosings, PayerCard, PotMug, RsvpButtons, TypeTag } from './common';
 
 function Thumb({ id, eventId }: { id: string; eventId: string }) {
-  const url = useMediaUrl(id, 'thumb');
+  const url = useMediaUrl(id, 'thumb', eventId);
   return <a className="thumb" href={`#termin-${eventId}`} style={url ? { backgroundImage: `url(${url})` } : undefined} aria-label="Foto ansehen" />;
 }
 
@@ -42,7 +43,7 @@ export function Dashboard() {
         <div className="attention">
           <Icon name="mug" />
           <div><strong>Kasse noch nicht gestartet</strong><span>Mit dem Start kommen {euro(state.members.filter((m) => m.status === 'active').length * 2000)} in den Topf.</span></div>
-          <button className="btn small primary" type="button" onClick={() => run(A.startCashPool, 'Kasse gestartet – der Topf ist gefüllt')}>Starten</button>
+          <button className="btn small primary" type="button" onClick={() => run(call('startCashPool'), 'Kasse gestartet – der Topf ist gefüllt')}>Starten</button>
         </div>
       )}
       {admin && mineToClose.map((e) => (

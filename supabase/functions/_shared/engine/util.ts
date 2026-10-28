@@ -1,11 +1,46 @@
-import type { Cents, ISODate } from './types';
+import { DomainError, type Cents, type ISODate } from './types.ts';
 
 // ---------- IDs ----------
+// Die App rechnet jede Aktion sofort lokal (schnelle Anzeige) und schickt dem Server die dabei
+// erzeugten IDs mit. Der Server spielt sie wieder ein → beide Seiten erzeugen exakt dieselben Einträge.
+export const ID_RE = /^[a-z0-9]{6,48}$/;
+let idMode: { kind: 'record' | 'replay'; ids: string[] } | null = null;
 let counter = 0;
+
+function randomPart(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  if (c?.getRandomValues) {
+    const b = new Uint32Array(2);
+    c.getRandomValues(b);
+    return (b[0].toString(36) + b[1].toString(36)).padStart(12, '0').slice(0, 12);
+  }
+  return Math.floor(Math.random() * 36 ** 8).toString(36).padStart(8, '0');
+}
+
 export function uid(prefix = ''): string {
+  if (idMode?.kind === 'replay' && idMode.ids.length) {
+    const next = idMode.ids.shift()!;
+    if (!ID_RE.test(next) || !next.startsWith(prefix)) throw new DomainError('Ungültige Kennung in der Anfrage.');
+    return next;
+  }
   counter = (counter + 1) % 1296;
-  const rnd = Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
-  return prefix + Date.now().toString(36).slice(-5) + rnd + counter.toString(36).padStart(2, '0');
+  const id = prefix + Date.now().toString(36).slice(-5) + randomPart() + counter.toString(36).padStart(2, '0');
+  if (idMode?.kind === 'record') idMode.ids.push(id);
+  return id;
+}
+
+/** Führt fn aus und merkt sich alle dabei erzeugten IDs. */
+export function recordIds<T>(fn: () => T): { result: T; ids: string[] } {
+  const prev = idMode;
+  idMode = { kind: 'record', ids: [] };
+  try { const result = fn(); return { result, ids: idMode.ids }; } finally { idMode = prev; }
+}
+
+/** Führt fn aus und verwendet dabei der Reihe nach die übergebenen IDs. */
+export function replayIds<T>(ids: string[], fn: () => T): T {
+  const prev = idMode;
+  idMode = { kind: 'replay', ids: [...ids] };
+  try { return fn(); } finally { idMode = prev; }
 }
 
 // ---------- Geld ----------
