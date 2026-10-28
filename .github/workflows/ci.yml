@@ -23,4 +23,4 @@ jobs:
           deno-version: v2.1.4
       - name: Edge Functions prüfen (Deno)
         working-directory: supabase/functions
-        run: deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts
+        run: deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts calendar/index.ts

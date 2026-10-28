@@ -10,7 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p .",
     "test:db": "node supabase/tests/schema.test.mjs",
-    "check:functions": "cd supabase/functions && (command -v deno >/dev/null && deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts || npx -y deno@2.1.4 check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts)"
+    "check:functions": "cd supabase/functions && (command -v deno >/dev/null && deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts calendar/index.ts || npx -y deno@2.1.4 check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts calendar/index.ts)"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

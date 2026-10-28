@@ -6,6 +6,7 @@ import { DomainError, type State } from './engine/types.ts';
 import { ID_RE, addDays, localToday, replayIds, weekdayMon0 } from './engine/util.ts';
 import { fromRows, TABLE_ORDER, toRows, type Tables } from './db/mapping.ts';
 import { loadTables, writeDiff, type Db } from './db/writer.ts';
+import { buildIcs } from './ics.ts';
 
 export interface AuthUser { id: string; email?: string }
 
@@ -64,6 +65,17 @@ export async function handleAct(db: Db, user: AuthUser, body: ActBody, now = new
   await db.query('select id from public.groups where id = $1::text for update', [groupId]);
   const before = fromRows(await loadTables(db, groupId), user.id);
   const ctx: A.Ctx = { actor: mem[0].id as string, now };
+
+  // Kalender-Abo: neuer geheimer Link (ersetzt den alten), am Zustand ändert sich nichts
+  if (action === 'calendarToken') {
+    const token = randomToken();
+    await db.query(
+      `insert into public.calendar_tokens (group_id, member_id, token_hash, created_at) values ($1::text, $2::text, $3::text, now())
+       on conflict (group_id, member_id) do update set token_hash = excluded.token_hash, created_at = excluded.created_at`,
+      [groupId, ctx.actor, await sha256Hex(token)]);
+    const v = await db.query('select state_version from public.groups where id = $1::text', [groupId]);
+    return { state: forClient({ ...before, currentUserId: ctx.actor }), version: Number(v[0].state_version), token, removedMedia: [], groupId };
+  }
   const base = A.ensureSeries(before, now);
 
   let after: State;
@@ -123,4 +135,16 @@ export async function commitInvite(db: Db, hash: string, input: AcceptInput, use
   await writeDiff(db, toRows(state), toRows(r.state));
   await bump(db, groupId);
   return { groupId, memberId: r.memberId };
+}
+
+// ---------- Kalender-Abo (ohne Login, per geheimem Link) ----------
+export async function handleCalendar(db: Db, token: string, appUrl: string, now = new Date()): Promise<string | null> {
+  if (!/^[a-f0-9]{64}$/.test(token)) return null;
+  const rows = await db.query(
+    `select t.group_id, t.member_id from public.calendar_tokens t
+       join public.group_members m on m.group_id = t.group_id and m.id = t.member_id and m.status = 'active'
+      where t.token_hash = $1::text`, [await sha256Hex(token)]);
+  if (!rows.length) return null;
+  const state = fromRows(await loadTables(db, rows[0].group_id as string));
+  return buildIcs({ ...state, currentUserId: rows[0].member_id as string }, rows[0].member_id as string, appUrl, now);
 }

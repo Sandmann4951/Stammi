@@ -8,3 +8,7 @@ verify_jwt = true
 [functions.accept-invite]
 # Ohne Login aufrufbar: Wer einen gültigen Einladungslink hat, legt hier sein Konto an.
 verify_jwt = false
+
+[functions.calendar]
+# Kalender-Apps rufen ohne Login ab; geschützt durch den geheimen Link (siehe Function).
+verify_jwt = false
