@@ -256,7 +256,7 @@ export function Calendar() {
       {state.series && tab === 'next' && (
         <div className="series-line">
           <Icon name="cal" size={18} />
-          <div><strong>{seriesText(state.series)}</strong><span>Ort wird je Treffen festgelegt</span></div>
+          <div><strong>{seriesText(state.series)}</strong><span>Ort wird je Treffen festgelegt · <a href="#mehr" onClick={() => setTimeout(() => document.getElementById('kalender-abo')?.scrollIntoView({ behavior: 'smooth' }), 150)}>Im Handy-Kalender abonnieren</a></span></div>
           {admin && <button className="btn small ghost" type="button" onClick={() => setSerOpen(true)}>Ändern</button>}
         </div>
       )}

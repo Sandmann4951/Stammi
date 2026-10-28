@@ -21,6 +21,11 @@ export function sb(): SupabaseClient {
   return client;
 }
 
+/** Abo-Adresse des Kalenders (https; für das iPhone als webcal://). */
+export function calendarFeedUrl(token: string) {
+  return `${URL_}/functions/v1/calendar?t=${token}`;
+}
+
 export function appUrl() {
   return `${location.origin}${location.pathname}`;
 }

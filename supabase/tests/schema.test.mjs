@@ -67,5 +67,11 @@ await db.exec(book('b4', 6, 'payout', 'payout:t1', [['pot', -5000], ['m1', 2500]
 await expectErr(`insert into attendance values ('gA','t1','m2','yes',null,now()), ('gA','t1','m2','no',null,now())`, /duplicate key/, 'Doppelte Teilnahme verhindert');
 await expectErr(`insert into events (group_id,id,type,title,date,end_date,status,created_at,created_by) values ('gA','t2','stammtisch','X','2026-11-01','2026-11-03','planned',now(),'m1')`, /check constraint/, 'Mehrtägiger Stammtisch abgelehnt');
 
+console.log('\nKalender-Abo');
+await as(U1);
+await expectErr('select * from calendar_tokens', /permission denied/, 'Kalender-Links sind für App-Nutzer unsichtbar');
+await expectErr(`insert into calendar_tokens (group_id, member_id, token_hash) values ('gA','m1','x')`, /permission denied/, 'Kalender-Links nicht direkt anlegbar');
+await db.exec('reset role');
+
 console.log(`\n${pass} bestanden, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

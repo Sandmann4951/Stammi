@@ -56,6 +56,8 @@ export function More() {
         )}
       </Section>
 
+      <CalendarSubscribe />
+
       {!remote && <Section title="Vorschau: Ansicht als">
         <p className="muted-line">Hier gibt es noch keinen Login. Wechsle die Person, um zu sehen, was Mitglieder und Admin jeweils dürfen.</p>
         <div className="switcher">
@@ -187,5 +189,53 @@ export function InviteAccept({ token }: { token: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function CalendarSubscribe() {
+  const { backend, calendarLink, toast } = useStore();
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [confirmNew, setConfirmNew] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  const create = async () => {
+    setBusy(true); setErr(null); setConfirmNew(false);
+    const r = await calendarLink();
+    setBusy(false);
+    if (r.ok) setUrl(r.url); else setErr(r.error);
+  };
+  const webcal = url?.replace(/^https?:/, 'webcal:');
+  return (
+    <Section title="Kalender-Abo" id="kalender-abo">
+      <p className="muted-line">Alle Termine automatisch im iPhone-, Google- oder Outlook-Kalender – mit Ort, Änderungen und Absagen. Deine Zusage steht in der Beschreibung.</p>
+      {backend.kind !== 'remote' ? (
+        <p className="hint-box">In der Vorschau nicht verfügbar – in der echten App gibt es hier deinen persönlichen Abo-Link.</p>
+      ) : !url ? (
+        <>
+          <button className="btn primary" type="button" onClick={create} disabled={busy}><Icon name="cal" size={18} /> {busy ? 'Erzeuge Link …' : 'Im Kalender abonnieren'}</button>
+          <p className="fineprint">Hast du schon abonniert, brauchst du nichts zu tun. Ein neuer Link macht den alten ungültig.</p>
+        </>
+      ) : (
+        <div className="cal-sub">
+          <a className="btn primary block" href={webcal}><Icon name="cal" size={18} /> Zum iPhone-Kalender hinzufügen</a>
+          <p className="fineprint">Öffnet „Kalenderabo hinzufügen“. Dort auf „Abonnieren“ und „Hinzufügen“ tippen.</p>
+          <span className="field-label">Für Google, Outlook oder den Mac: Link kopieren</span>
+          <div className="copy-row">
+            <input id="cal-link" ref={ref} readOnly value={url} onFocus={(e) => e.target.select()} />
+            <button className="btn small" type="button" onClick={async () => toast((await copyText(url, ref.current)) ? 'Link kopiert' : 'Link markiert – jetzt kopieren')}><Icon name="copy" size={16} /> Kopieren</button>
+          </div>
+          <p className="fineprint">Google Kalender (am Computer): Andere Kalender → + → Per URL. Der Link ist persönlich – bitte nicht weitergeben.</p>
+        </div>
+      )}
+      {url && (confirmNew ? (
+        <div className="row-actions wrap">
+          <span className="fineprint">Der bisherige Link funktioniert danach nicht mehr.</span>
+          <button className="btn small danger" type="button" onClick={create}>Neuen Link erzeugen</button>
+          <button className="btn small ghost" type="button" onClick={() => setConfirmNew(false)}>Abbrechen</button>
+        </div>
+      ) : <button className="link" type="button" onClick={() => setConfirmNew(true)}>Neuen Link erzeugen (alten sperren)</button>)}
+      {err && <p className="form-error" role="alert">{err}</p>}
+    </Section>
   );
 }

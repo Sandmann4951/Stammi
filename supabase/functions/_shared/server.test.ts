@@ -99,3 +99,28 @@ describe('Regression 28.10.: Serie verschieben mit stornierter Auslage (echte Fr
     expect((await pg.query("select count(*)::int as n from expenses where id = 'a9regress01'")).rows[0].n).toBe(0);
   });
 });
+
+describe('Kalender-Abo', () => {
+  it('Link erzeugen, abrufen, ersetzen, für Inaktive sperren', async () => {
+    const { handleCalendar } = await import('./server.ts');
+    const r1 = await act(markus, { action: 'calendarToken', args: [] });
+    expect(r1.token).toMatch(/^[a-f0-9]{64}$/);
+    const ics = await tx(() => handleCalendar(db, r1.token!, 'https://app/'));
+    expect(ics).toContain('BEGIN:VCALENDAR');
+    expect(ics).toContain('SUMMARY:Stammtisch');
+    // ungültig / zu kurz
+    expect(await tx(() => handleCalendar(db, 'f'.repeat(64), 'https://app/'))).toBeNull();
+    expect(await tx(() => handleCalendar(db, 'abc', 'https://app/'))).toBeNull();
+    // neuer Link ersetzt den alten
+    const r2 = await act(markus, { action: 'calendarToken', args: [] });
+    expect(await tx(() => handleCalendar(db, r1.token!, 'https://app/'))).toBeNull();
+    expect(await tx(() => handleCalendar(db, r2.token!, 'https://app/'))).toContain('BEGIN:VCALENDAR');
+    // Mitglied deaktiviert → kein Kalender mehr
+    const mk = (await pg.query('select id from group_members where user_id = $1', [markus.id])).rows[0].id as string;
+    await act(daniel, { action: 'setMemberStatus', args: [mk, 'inactive'] });
+    expect(await tx(() => handleCalendar(db, r2.token!, 'https://app/'))).toBeNull();
+    await act(daniel, { action: 'setMemberStatus', args: [mk, 'active'] });
+    // Fremde ohne Gruppe bekommen keinen Link
+    await expect(act(stranger, { action: 'calendarToken', args: [] })).rejects.toThrow(/kein Mitglied/);
+  });
+});

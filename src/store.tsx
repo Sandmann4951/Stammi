@@ -3,7 +3,7 @@ import * as A from '@engine/actions';
 import { applyCall, stateOf, type ActionName, type ActionResult, type Call } from '@engine/registry';
 import { DomainError, type Member, type State, type StEvent } from '@engine/types';
 import { localToday, recordIds } from '@engine/util';
-import { fetchState, invoke, sendCall, watchGroup, type ActResponse } from './remote';
+import { calendarFeedUrl, fetchState, invoke, sendCall, watchGroup, type ActResponse } from './remote';
 import { demoState, emptyState } from './seed';
 
 // ---------- Persistenz (Vorschau: nur in diesem Browser) ----------
@@ -61,6 +61,8 @@ interface Store {
   tryRun: <K extends ActionName>(c: Call<K>, okText?: string) => TryResult<K>;
   /** Einladung erzeugen. Online erzeugt der Server den Link. */
   invite: (email: string) => Promise<{ ok: true; link: string } | { ok: false; error: string }>;
+  /** Persönlichen Kalender-Abo-Link erzeugen (ersetzt einen vorhandenen). Nur online. */
+  calendarLink: () => Promise<{ ok: true; url: string } | { ok: false; error: string }>;
   /** Nur Vorschau: ganzen Zustand ersetzen (Personenwechsel, Zurücksetzen). */
   replace: (s: State, text?: string) => void;
   reload: () => Promise<void>;
@@ -199,17 +201,28 @@ export function StoreProvider({ children, backend: initialBackend, initial }: { 
     }
   }, [applyServer]);
 
+  const calendarLink = useCallback(async () => {
+    if (backendRef.current.kind !== 'remote') return { ok: false as const, error: 'Das Kalender-Abo gibt es nur in der echten App, nicht in der Vorschau.' };
+    try {
+      await queue.current;
+      const r = await invoke<ActResponse>('act', { action: 'calendarToken', args: [] });
+      return { ok: true as const, url: calendarFeedUrl(r.token!) };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : 'Fehler' };
+    }
+  }, []);
+
   const replace = useCallback((s: State, text?: string) => { ref.current = s; setState(s); if (text) toast(text); }, [toast]);
 
   const value = useMemo<Store>(() => {
     const me = state.members.find((m) => m.id === state.currentUserId) ?? state.members[0];
     return {
       state, me, admin: A.isAdmin(state, me.id), today: localToday(), backend, syncing: pending > 0,
-      run, tryRun, invite, replace, reload, toasts, toast, dismiss,
+      run, tryRun, invite, calendarLink, replace, reload, toasts, toast, dismiss,
       resetDemo: () => replace(demoState(), 'Beispieldaten geladen'),
       resetEmpty: () => replace(emptyState(), 'Leere Gruppe angelegt'),
     };
-  }, [state, backend, pending, run, tryRun, invite, replace, reload, toasts, toast, dismiss]);
+  }, [state, backend, pending, run, tryRun, invite, calendarLink, replace, reload, toasts, toast, dismiss]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

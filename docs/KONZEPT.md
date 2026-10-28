@@ -131,3 +131,13 @@ Rest-Cents gehen deterministisch reihum (Startpunkt aus der Termin-ID), damit ni
 * Wer am weitesten im Minus ist, zahlt die Rechnung, sofern anwesend. Die App zeigt die Person auf der Übersicht und schlägt sie beim Erfassen vor.
 * Nach der Abrechnung können nur Admins Auslagen nachtragen oder stornieren.
 * Der Ort wird je Treffen festgelegt (jedes Mitglied darf), nicht in der Serie.
+
+## 6. Kalender-Abo
+
+* Jedes Mitglied erzeugt unter *Gruppe & Profil* einen persönlichen Abo-Link (`webcal://…/functions/v1/calendar?t=…`).
+  Das iPhone (wie auch Google, Outlook, Mac) ruft ihn regelmäßig ab und übernimmt neue, verschobene und abgesagte Termine.
+* Der Link enthält einen zufälligen 256-Bit-Schlüssel. In `calendar_tokens` steht nur dessen SHA-256-Hash; die
+  Tabelle ist für App-Nutzer unsichtbar. Ein neuer Link ersetzt den alten, deaktivierte Mitglieder bekommen nichts mehr.
+* Inhalt: alle Termine der Gruppe ab sechs Monaten zurück, Zeitzone Europe/Berlin, mehr- und ganztägige Termine,
+  Absagen als `STATUS:CANCELLED`, eigene Antwort und Link zur App in der Beschreibung. Ohne Endzeit: Stammtisch 3 Std.,
+  Event 2 Std. Erzeugt in `supabase/functions/_shared/ics.ts`, geprüft mit eigenen Tests und dem Parser ical.js.
