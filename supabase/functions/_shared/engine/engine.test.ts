@@ -336,3 +336,24 @@ describe('ID-Wiedergabe (App rechnet vor, Server rechnet nach)', () => {
     expect(() => A.addMedia(t, ctxOf(ids[2]), { id: 'f12345678', eventId: ev.id, width: 10, height: 10, bytes: 100 })).toThrow(/Foto-Kennung/);
   });
 });
+
+describe('Stornierte Auslagen blockieren nichts (Fehler vom 28.10.)', () => {
+  it('Serie verschieben entfernt künftige Termine samt stornierter Auslage', () => {
+    const { s, admin, ids } = setup();
+    const future = series(s).find((e) => e.date > '2026-10-27')!;
+    let t = A.addExpense(s, ctxOf(ids[1]), { eventId: future.id, payerId: ids[1], amount: 1000, description: 'Test' });
+    t = A.voidExpense(t, ctxOf(ids[1]), t.expenses[0].id);
+    t = A.updateSeries(t, ctxOf(admin), { ...t.series!, startDate: '2026-09-07' });
+    expect(t.events.some((e) => e.id === future.id)).toBe(false);
+    expect(t.expenses.some((x) => x.eventId === future.id)).toBe(false);
+  });
+  it('Event löschen nimmt stornierte Auslagen, Notizen und Fotos mit', () => {
+    const { s, ids } = setup();
+    const r = A.createEvent(s, ctxOf(ids[1]), { type: 'event', title: 'X', date: '2026-11-20', time: '19:00', location: '', description: '' });
+    let t = A.addExpense(r.state, ctxOf(ids[1]), { eventId: r.id, payerId: ids[1], amount: 500, description: 'Y' });
+    t = A.voidExpense(t, ctxOf(ids[1]), t.expenses[0].id);
+    t = A.addNote(t, ctxOf(ids[1]), r.id, 'Notiz', false);
+    t = A.deleteEvent(t, ctxOf(ids[1]), r.id);
+    expect([t.expenses.length, t.notes.length]).toEqual([0, 0]);
+  });
+});

@@ -146,9 +146,10 @@ export function updateSeries(state: State, ctx: Ctx, rule: SeriesRule): State {
   if (!/^\d{2}:\d{2}$/.test(rule.time)) throw new DomainError('Bitte eine Uhrzeit angeben.');
   const t = today(ctx);
   // Zukünftige, unveränderte und unberührte Serientermine werden neu erzeugt.
+  // Termine mit Inhalt bleiben. Stornierte Auslagen ohne Buchung zählen nicht – sie werden mit dem Termin entfernt.
   const touched = (id: string) =>
     state.notes.some((n) => n.eventId === id) || state.media.some((m) => m.eventId === id) ||
-    state.expenses.some((x) => x.eventId === id && !x.voidedAt);
+    state.expenses.some((x) => x.eventId === id && !x.voidedAt) || state.ledger.some((l) => l.eventId === id);
   const removeIds = new Set(state.events
     .filter((e) => e.originalSeriesDate && !e.detached && e.status === 'planned' && e.date > t && !touched(e.id))
     .map((e) => e.id));
@@ -157,6 +158,7 @@ export function updateSeries(state: State, ctx: Ctx, rule: SeriesRule): State {
     series: { startDate: rule.startDate, intervalWeeks: rule.intervalWeeks, time: rule.time, title: rule.title.trim() || 'Stammtisch' },
     events: state.events.filter((e) => !removeIds.has(e.id)),
     attendance: state.attendance.filter((a) => !removeIds.has(a.eventId)),
+    expenses: state.expenses.filter((x) => !removeIds.has(x.eventId)),
   };
   return ensureSeries(s, ctx.now);
 }
@@ -259,6 +261,10 @@ export function deleteEvent(state: State, ctx: Ctx, id: string): State {
     ...state,
     events: state.events.filter((e) => e.id !== id),
     attendance: state.attendance.filter((a) => a.eventId !== id),
+    // nur noch stornierte Auslagen ohne Buchung übrig – sie gehören zum Termin und gehen mit
+    expenses: state.expenses.filter((x) => x.eventId !== id),
+    notes: state.notes.filter((n) => n.eventId !== id),
+    media: state.media.filter((m) => m.eventId !== id),
     ideas: state.ideas.map((i) => (i.eventId === id ? { ...i, eventId: undefined, status: i.status === 'planned' ? 'open' : i.status } : i)),
   };
 }

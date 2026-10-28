@@ -21,7 +21,9 @@ export function errorResponse(e: unknown) {
   const msg = e instanceof Error ? e.message : String(e);
   if (/Doppelte Buchung|unveränderlich|geht nicht auf/.test(msg)) return json({ error: msg }, 409);
   console.error(e);
-  return json({ error: 'Unerwarteter Fehler auf dem Server. Bitte noch einmal versuchen.' }, 500);
+  // Kurzer technischer Grund hilft bei der Fehlersuche (private App, keine Geheimnisse in Datenbankfehlern)
+  const detail = msg.replace(/\s+/g, ' ').slice(0, 200);
+  return json({ error: `Unerwarteter Fehler auf dem Server (${detail}).` }, 500);
 }
 
 function firstKey(envName: string): string | undefined {

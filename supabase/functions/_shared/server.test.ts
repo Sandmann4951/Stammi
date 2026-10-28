@@ -83,3 +83,19 @@ describe('Edge Function act / accept-invite (Ablauf)', () => {
     expect(legs).toBeGreaterThan(0);
   });
 });
+
+describe('Regression 28.10.: Serie verschieben mit stornierter Auslage (echte Fremdschlüssel)', () => {
+  it('läuft durch und entfernt den alten Termin samt Auslage', async () => {
+    const st = (await act(daniel, { action: 'setRsvp', args: ['x', 'y', 'yes'] }).catch(() => null));
+    expect(st).toBeNull();
+    const cur = (await pg.query("select id, date::text as d from events where status = 'planned' and date > current_date and id not in (select event_id from notes) order by date limit 1")).rows[0];
+    const me = (await pg.query('select id from group_members where user_id = $1', [daniel.id])).rows[0].id as string;
+    await act(daniel, { action: 'addExpense', args: [{ eventId: cur.id, payerId: me, amount: 1200, description: 'Brezn' }], ids: ['a9regress01'] });
+    await act(daniel, { action: 'voidExpense', args: ['a9regress01'] });
+    const series = (await pg.query('select series from groups')).rows[0].series as { startDate: string };
+    const shifted = new Date(series.startDate + 'T00:00:00Z'); shifted.setUTCDate(shifted.getUTCDate() + 7);
+    const r = await act(daniel, { action: 'updateSeries', args: [{ ...series, startDate: shifted.toISOString().slice(0, 10) }] });
+    expect(r.state.events.some((e) => e.id === cur.id)).toBe(false);
+    expect((await pg.query("select count(*)::int as n from expenses where id = 'a9regress01'")).rows[0].n).toBe(0);
+  });
+});
