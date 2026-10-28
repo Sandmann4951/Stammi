@@ -18,5 +18,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:db
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
       - name: Edge Functions prüfen (Deno)
-        run: npm run check:functions
+        working-directory: supabase/functions
+        run: deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts
