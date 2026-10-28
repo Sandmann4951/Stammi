@@ -1,0 +1,26 @@
+name: Datenbank & Funktionen (Supabase)
+
+# Bewusst nur manuell auszulösen: Migrationen sollen nie versehentlich laufen.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Repository → Settings → Secrets and variables → Actions → Secrets
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase db push
+      - name: Edge Functions
+        run: |
+          if [ -d supabase/functions ] && [ "$(ls -A supabase/functions)" ]; then
+            supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+          fi
