@@ -1,0 +1,10 @@
+# Supabase-Projektkonfiguration (für CLI und GitHub-Integration).
+# Auth-Einstellungen (Registrierung aus, Site URL, SMTP) werden im Dashboard gepflegt – siehe README.
+project_id = "bmkflztcbgqdmninwtbj"
+
+[functions.act]
+verify_jwt = true
+
+[functions.accept-invite]
+# Ohne Login aufrufbar: Wer einen gültigen Einladungslink hat, legt hier sein Konto an.
+verify_jwt = false

@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": [
+      "vite/client"
+    ],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@engine/*": [
+        "./supabase/functions/_shared/engine/*"
+      ],
+      "@db/*": [
+        "./supabase/functions/_shared/db/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "supabase/functions/_shared"
+  ],
+  "exclude": [
+    "supabase/functions/_shared/http.ts"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "stammi",
+  "version": "0.1.0",
+  "description": "Private Web-App für unseren Stammtisch: Kalender, faire Kasse, Chronik und Ideen.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "build:artifact": "SINGLE=1 VITE_PREVIEW=1 vite build && node scripts/build-artifact.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "test:db": "node supabase/tests/schema.test.mjs",
+    "check:functions": "cd supabase/functions && (command -v deno >/dev/null && deno check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts || npx -y deno@2.1.4 check --node-modules-dir=none --no-config act/index.ts accept-invite/index.ts)"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.12",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vite-plugin-singlefile": "^2.3.4",
+    "vitest": "^5.0.5"
+  },
+  "private": true,
+  "type": "module"
+}
