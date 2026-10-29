@@ -124,3 +124,32 @@ describe('Kalender-Abo', () => {
     await expect(act(stranger, { action: 'calendarToken', args: [] })).rejects.toThrow(/kein Mitglied/);
   });
 });
+
+describe('Splitwise-Übernahme über den Server (eigene Datenbank)', () => {
+  it('bucht Salden + Topf, ersetzt Kassenstart, verhindert Doppelübernahme', async () => {
+    const pg2 = (await makeDb()) as unknown as PG;
+    const db2: Db = { query: async (t, p) => (await pg2.query(t, p)).rows };
+    const tx2 = async <T,>(fn: () => Promise<T>) => { await pg2.exec('begin'); try { const r = await fn(); await pg2.exec('commit'); return r; } catch (e) { await pg2.exec('rollback'); throw e; } };
+    const users = ['a', 'b', 'c', 'd', 'e'].map((c) => ({ id: `${c.repeat(8)}-${c.repeat(4)}-4${c.repeat(3)}-8${c.repeat(3)}-${c.repeat(12)}`, email: `${c}@x.de` }));
+    for (const u of users) await pg2.query('insert into auth.users (id) values ($1)', [u.id]);
+    await tx2(() => handleAct(db2, users[0], { action: 'createGroup', args: ['Stammi', 'Daniel'] }));
+    const names = ['Lars', 'Markus', 'Maximilian', 'Schmid'];
+    for (let i = 1; i < 5; i++) {
+      const inv = await tx2(() => handleAct(db2, users[0], { action: 'inviteMember', args: [`${names[i - 1].toLowerCase()}@x.de`] }));
+      const chk = await tx2(() => checkInvite(db2, { token: inv.token, name: names[i - 1], email: users[i].email, password: 'geheim123' }));
+      await tx2(() => commitInvite(db2, chk.hash, chk.input, users[i].id));
+    }
+    const started = await tx2(() => handleAct(db2, users[0], { action: 'startCashPool', args: [] }));
+    const ids = started.state.members.map((m) => m.id);
+    const SW = [2158, -828, 2599, 1890, -819];
+    const r = await tx2(() => handleAct(db2, users[0], { action: 'importBalances', args: [{ balances: ids.map((id, i) => ({ memberId: id, amount: SW[i] })), pot: 5000, settledInCycle: 1, date: '2026-10-29' }] }));
+    const { standings, potBalance, cycleInfo } = await import('./engine/finance.ts');
+    expect(potBalance(r.state.ledger)).toBe(5000);
+    expect(ids.map((id) => standings(r.state).get(id))).toEqual([1158, -1828, 1599, 890, -1819]);
+    expect(cycleInfo(r.state)).toMatchObject({ cycleNo: 1, settledInCycle: 1 });
+    const pot = (await pg2.query("select coalesce(sum(amount_cents),0)::int as p from ledger_legs where account = 'pot'")).rows[0].p;
+    expect(pot).toBe(5000);
+    await expect(tx2(() => handleAct(db2, users[0], { action: 'importBalances', args: [{ balances: [], pot: 0, settledInCycle: 0, date: '' }] }))).rejects.toThrow(/schon übernommen/);
+    await expect(tx2(() => handleAct(db2, users[1], { action: 'importBalances', args: [{ balances: [], pot: 0, settledInCycle: 0, date: '' }] }))).rejects.toThrow(/Admin/);
+  });
+});

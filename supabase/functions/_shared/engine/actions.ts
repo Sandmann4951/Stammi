@@ -471,6 +471,59 @@ export function importOpening(state: State, ctx: Ctx, claims: OpeningClaim[], da
   }).state;
 }
 
+/** Saldo je Person wie in der Splitwise-Gruppenbilanz: positiv = bekommt zurück, negativ = schuldet. */
+export interface OpeningBalance { memberId: string; amount: Cents }
+
+/**
+ * Anfangsbestand als Salden je Person + Topfstand (Splitwise-„Vereinskasse“).
+ * In Splitwise ist die Kasse ein Schein-Mitglied, das den Personen den Topfinhalt schuldet (Σ Personen = Topf).
+ * In Stammi gehört der Topf allen aktiven Mitgliedern zu gleichen Teilen. Damit der Stand jeder Person
+ * (Saldo + Topfanteil) dem aufgelösten Splitwise-Stand entspricht, wird je Person `Saldo − 2 × Topfanteil` gebucht
+ * und der Topf mit seinem Bestand eröffnet. Ein bereits gestarteter, noch nie abgerechneter Kassenstart wird storniert.
+ */
+export function importBalances(state: State, ctx: Ctx, input: { balances: OpeningBalance[]; pot: Cents; settledInCycle: 0 | 1; date: ISODate }): State {
+  requireAdmin(state, ctx);
+  if (openingImported(state)) throw new DomainError('Der Anfangsbestand wurde schon übernommen. Korrekturen bitte per Storno im Journal.');
+  const pot = input.pot;
+  if (!Number.isInteger(pot) || pot < 0 || pot > MAX_AMOUNT) throw new DomainError('Bitte einen gültigen Topfstand eingeben.');
+  const members = activeMembers(state);
+  const ids = members.map((m) => m.id);
+  const bal = new Map<string, Cents>();
+  for (const b of input.balances) {
+    if (!ids.includes(b.memberId)) throw new DomainError('Salden gehen nur für aktive Mitglieder.');
+    if (bal.has(b.memberId)) throw new DomainError('Jede Person bitte nur einmal eintragen.');
+    if (!Number.isInteger(b.amount) || Math.abs(b.amount) > MAX_AMOUNT) throw new DomainError('Ein Saldo ist ungültig.');
+    bal.set(b.memberId, b.amount);
+  }
+  const sum = [...bal.values()].reduce((a, b) => a + b, 0);
+  if (sum !== pot) {
+    throw new DomainError(`Die Salden der Personen ergeben ${euro(sum)}, die Kasse schuldet ${euro(pot)}. In Splitwise ist beides gleich – bitte die Beträge prüfen.`);
+  }
+  if (!sum && !pot && ![...bal.values()].some((v) => v !== 0)) throw new DomainError('Es sind keine Salden erfasst.');
+  const settled = input.settledInCycle === 1 ? 1 : 0;
+  if (pot > 0 && pot < (MEETINGS_PER_CYCLE - settled) * PAYOUT_PER_MEETING) {
+    throw new DomainError(`Mit ${euro(pot)} im Topf reicht es nicht für ${MEETINGS_PER_CYCLE - settled} weitere Stammtische im Zyklus. Bitte „bereits abgerechnet“ prüfen.`);
+  }
+
+  let s = state;
+  const info = cycleInfo(s);
+  if (pot > 0 && info.cycleNo > 0) {
+    const refills = activeEntries(s.ledger).filter((e) => e.kind === 'refill');
+    if (info.totalSettled > 0 || refills.length !== 1) throw new DomainError('Die Kasse läuft schon mit Abrechnungen. Einen Topfstand kann man nur vor dem ersten abgerechneten Stammtisch übernehmen.');
+    s = reverse(s, ctx, refills[0].id, 'Storno Kassenstart – ersetzt durch den übernommenen Topfstand');
+  }
+
+  const shares = splitCents(pot, ids, 0);
+  const legs: Leg[] = ids.map((id) => ({ account: id, amount: (bal.get(id) ?? 0) - 2 * (shares.get(id) ?? 0) }));
+  if (pot) legs.push({ account: POT, amount: pot });
+  return post(s, ctx, {
+    kind: 'opening', date: input.date || today(ctx), key: 'opening',
+    text: pot ? `Anfangsbestand aus Splitwise (Salden + Topf ${euro(pot)})` : 'Anfangsbestand aus Splitwise (Salden)',
+    legs,
+    meta: { mode: 'balances', balances: [...bal].map(([memberId, amount]) => ({ memberId, amount })), pot, ...(pot ? { cycleNo: 1, settledInCycle: settled } : {}) },
+  }).state;
+}
+
 export type SpecialInMode = 'all' | 'selected' | 'external';
 
 export function specialIn(state: State, ctx: Ctx, input: { amount: Cents; mode: SpecialInMode; memberIds: string[]; holderId?: string; reason: string; date: ISODate }): State {

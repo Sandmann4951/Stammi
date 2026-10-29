@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as A from '@engine/actions';
 import { call } from '@engine/registry';
 import {
-  activeMembers, breakdown, CATEGORY_LABEL, cycleInfo, ledgerCsv, reversedIds, standings, suggestPayments,
+  activeMembers, breakdown, CATEGORY_LABEL, cycleInfo, PAYOUT_PER_MEETING, ledgerCsv, reversedIds, standings, suggestPayments,
   type Category, type Payment,
 } from '@engine/finance';
-import { POT, type LedgerEntry } from '@engine/types';
-import { euro, parseEuro } from '@engine/util';
+import { POT, type LedgerEntry, type State } from '@engine/types';
+import { euro, euroSigned, parseEuro } from '@engine/util';
 import { ExpenseSheet, SettlementSheet } from '../forms';
 import { useStore } from '../store';
 import { Avatar, copyText, Empty, Field, fmtDate, Icon, memberName, MemberPicker, Money, MoneyInput, Pill, Section, Segmented, Sheet, useMoneyField } from '../ui';
@@ -23,6 +23,7 @@ export function Cash() {
   const [settle, setSettle] = useState<{ open: boolean; preset?: Payment }>({ open: false });
   const [special, setSpecial] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [balances, setBalances] = useState(false);
   const [explain, setExplain] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const info = cycleInfo(state);
@@ -125,8 +126,8 @@ export function Cash() {
             <button className="admin-card" type="button" onClick={() => setSpecial(true)}>
               <Icon name="star" /><span><strong>Sonderbuchung</strong><small>Zuführung oder Ausschüttung, außerhalb des Zyklus</small></span>
             </button>
-            <button className="admin-card" type="button" onClick={() => setOpening(true)} disabled={!!A.openingImported(state)}>
-              <Icon name="swap" /><span><strong>Anfangsbestand aus Splitwise</strong><small>{A.openingImported(state) ? `Übernommen am ${fmtDate(A.openingImported(state)!.date)}` : 'Wer schuldet wem – einmalig übernehmen'}</small></span>
+            <button className="admin-card" type="button" onClick={() => setBalances(true)} disabled={!!A.openingImported(state)}>
+              <Icon name="swap" /><span><strong>Stand aus Splitwise übernehmen</strong><small>{A.openingImported(state) ? `Übernommen am ${fmtDate(A.openingImported(state)!.date)}` : 'Gruppenbilanz inkl. Vereinskasse – einmalig'}</small></span>
             </button>
           </div>
         </Section>
@@ -138,6 +139,7 @@ export function Cash() {
       <SettlementSheet open={settle.open} preset={settle.preset} onClose={() => setSettle({ open: false })} />
       <SpecialSheet open={special} onClose={() => setSpecial(false)} />
       <OpeningSheet open={opening} onClose={() => setOpening(false)} />
+      <BalancesSheet open={balances} onClose={() => setBalances(false)} onPairs={() => { setBalances(false); setOpening(true); }} />
       <ExplainSheet open={explain} onClose={() => setExplain(false)} />
     </div>
   );
@@ -354,6 +356,111 @@ function OpeningSheet({ open, onClose }: { open: boolean; onClose: () => void })
           <h4>Wirkung je Person</h4>
           <dl className="breakdown">{[...net].map(([id, v]) => <div key={id}><dt>{memberName(state, id)}</dt><dd><Money cents={v} signed tone /></dd></div>)}</dl>
           {err && <p className="form-error" role="alert">{err}</p>}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/** Splitwise-Gruppenbilanz übernehmen: Saldo je Person + „Vereinskasse schuldet“ = Topf. */
+function BalancesSheet({ open, onClose, onPairs }: { open: boolean; onClose: () => void; onPairs: () => void }) {
+  const { state, tryRun, today } = useStore();
+  const members = activeMembers(state);
+  const [rows, setRows] = useState<Record<string, { sign: 1 | -1; raw: string }>>({});
+  const [potRaw, setPotRaw] = useState('');
+  const [settled, setSettled] = useState<'auto' | 0 | 1>('auto');
+  const [date, setDate] = useState(today);
+  const [step, setStep] = useState<'edit' | 'preview'>('edit');
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setRows(Object.fromEntries(members.map((m) => [m.id, { sign: 1 as const, raw: '' }])));
+    setPotRaw(''); setSettled('auto'); setDate(today); setStep('edit'); setErr(null);
+  }, [open]); // eslint-disable-line
+
+  const pot = parseEuro(potRaw || '0') ?? NaN;
+  const balances = members.map((m) => ({ memberId: m.id, amount: (rows[m.id]?.sign ?? 1) * (parseEuro(rows[m.id]?.raw || '0') ?? NaN) }));
+  const invalid = Number.isNaN(pot) || pot < 0 || balances.some((b) => Number.isNaN(b.amount));
+  const sum = invalid ? 0 : balances.reduce((a, b) => a + b.amount, 0);
+  const settledVal: 0 | 1 = settled === 'auto' ? (pot >= 2 * PAYOUT_PER_MEETING ? 0 : 1) : settled;
+  const info = cycleInfo(state);
+
+  // Vorschau mit der echten Fachlogik rechnen
+  let preview: { state: State } | { error: string } | null = null;
+  if (!invalid) {
+    try {
+      preview = { state: A.importBalances(state, { actor: state.currentUserId, now: new Date() }, { balances, pot, settledInCycle: settledVal, date }) };
+    } catch (e) { preview = { error: e instanceof Error ? e.message : 'Fehler' }; }
+  }
+  const after = preview && 'state' in preview ? standings(preview.state) : null;
+  const share = members.length ? Math.round(pot / members.length) : 0;
+  const ok = !!after && sum === pot;
+
+  const submit = () => {
+    const r = tryRun(call('importBalances', { balances, pot, settledInCycle: settledVal, date }), 'Stand aus Splitwise übernommen');
+    if (r.ok) onClose(); else setErr(r.error);
+  };
+  const setRow = (id: string, p: Partial<{ sign: 1 | -1; raw: string }>) => setRows({ ...rows, [id]: { ...rows[id], ...p } });
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Stand aus Splitwise" wide
+      action={step === 'edit' ? { label: 'Weiter', onClick: () => { if (ok) { setErr(null); setStep('preview'); } }, disabled: !ok } : { label: 'Übernehmen', onClick: submit }}>
+      {step === 'edit' ? (
+        <div className="form">
+          <p className="sheet-lead">Öffne in Splitwise die <b>Gruppenbilanz</b> und übertrage für jede Person, was sie „bekommt“ oder „schuldet“. Die <b>Vereinskasse</b> ist bei uns der Topf.</p>
+          <p className="hint-box">In der App sind {members.length} Mitglieder: {members.map((m) => m.name).join(', ')}. Fehlt jemand aus Splitwise, bitte zuerst einladen – sonst stimmt die Aufteilung des Topfs nicht.</p>
+          <div className="bal-list">
+            {members.map((m) => (
+              <div className="bal-row" key={m.id}>
+                <span className="bal-name"><Avatar member={m} size={28} />{m.name}</span>
+                <div className="bal-sign" role="group" aria-label={`${m.name}: bekommt oder schuldet`}>
+                  <button type="button" className={rows[m.id]?.sign === 1 ? 'on pos' : ''} onClick={() => setRow(m.id, { sign: 1 })}>bekommt</button>
+                  <button type="button" className={rows[m.id]?.sign === -1 ? 'on neg' : ''} onClick={() => setRow(m.id, { sign: -1 })}>schuldet</button>
+                </div>
+                <MoneyInput id={`bal-${m.id}`} value={rows[m.id]?.raw ?? ''} onChange={(v) => setRow(m.id, { raw: v.replace('-', '') })} />
+              </div>
+            ))}
+            <div className="bal-row pot">
+              <span className="bal-name"><Icon name="mug" size={22} />Vereinskasse schuldet</span>
+              <span className="bal-sign-fixed">= Topf</span>
+              <MoneyInput id="bal-pot" value={potRaw} onChange={(v) => setPotRaw(v.replace('-', ''))} />
+            </div>
+          </div>
+          {pot > 0 && !Number.isNaN(pot) && (
+            <Field label="Im laufenden Zyklus schon abgerechnet" hint={`Bei ${euro(pot)} im Topf ${settledVal === 1 ? 'ist schon ein Stammtisch abgerechnet: Nach dem nächsten wird wieder aufgefüllt.' : 'ist der Topf voll: Aufgefüllt wird nach zwei weiteren Stammtischen.'}`}>
+              <select id="bal-settled" value={settled === 'auto' ? String(settledVal) : String(settled)} onChange={(e) => setSettled(Number(e.target.value) as 0 | 1)}>
+                <option value="0">Noch kein Treffen (Topf voll)</option>
+                <option value="1">Ein Treffen (Topf halb leer)</option>
+              </select>
+            </Field>
+          )}
+          <p className={`bal-check ${invalid ? 'bad' : sum === pot ? 'good' : 'bad'}`}>
+            {invalid ? 'Bitte nur Beträge wie 21,58 eingeben.' : <>Personen zusammen: <b>{euroSigned(sum)}</b> · Vereinskasse: <b>{euro(Number.isNaN(pot) ? 0 : pot)}</b> {sum === pot ? '✓ passt' : '– muss gleich sein'}</>}
+          </p>
+          {preview && 'error' in preview && sum === pot && <p className="form-error">{preview.error}</p>}
+          {info.cycleNo > 0 && info.totalSettled === 0 && pot > 0 && <p className="fineprint">Die bereits gestartete Kasse wird durch den übernommenen Topfstand ersetzt (per Gegenbuchung).</p>}
+          <Field label="Stichtag"><input id="bal-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <button className="link" type="button" onClick={onPairs}>Stattdessen einzelne Forderungen („A schuldet B“) eintragen</button>
+        </div>
+      ) : (
+        <div className="form">
+          <p className="sheet-lead">So sieht der Stand danach in Stammi aus. Bitte prüfen – übernommen wird nur einmal.</p>
+          <div className="table-wrap">
+            <table className="settle-table">
+              <thead><tr><th>Person</th><th>Splitwise</th><th>Stammi</th></tr></thead>
+              <tbody>
+                {members.map((m, i) => (
+                  <tr key={m.id}><td><span className="cell-person"><Avatar member={m} size={24} />{m.name}</span></td>
+                    <td><Money cents={balances[i].amount} signed /></td>
+                    <td><Money cents={after?.get(m.id) ?? 0} signed tone /></td></tr>
+                ))}
+                <tr><td><span className="cell-person"><Icon name="mug" size={20} />Topf</span></td><td><Money cents={-pot} signed /></td><td><Money cents={pot} /></td></tr>
+              </tbody>
+            </table>
+          </div>
+          {pot > 0 && <p className="hint-box">Splitwise führt die Kasse als eigene Person. Bei uns gehört der Topf allen gleich – jeder Stand enthält deshalb seinen Anteil (je ca. {euro(share)}) schon eingerechnet. Darum ist jeder Wert um diesen Anteil niedriger, die Summe bleibt 0.</p>}
+          {err && <p className="form-error" role="alert">{err}</p>}
+          <button className="btn ghost" type="button" onClick={() => setStep('edit')}>Zurück</button>
         </div>
       )}
     </Sheet>

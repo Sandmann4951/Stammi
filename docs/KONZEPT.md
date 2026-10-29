@@ -102,7 +102,8 @@ Alle Beträge in Integer-Cent. Jede Buchung hat Beine auf Konten (Topf oder Mitg
 | Topfgutschrift je abgerechnetem Stammtisch (≥ 2 Anwesende) | − 50 € | Anwesende je + Anteil |
 | Auslage | | Zahler + Betrag, Anwesende je − Anteil |
 | Ausgleichszahlung A → B | | A + Betrag, B − Betrag |
-| Anfangsbestand (Splitwise) | | Gläubiger +, Schuldner − |
+| Anfangsbestand (Splitwise, Forderungen) | | Gläubiger +, Schuldner − |
+| Anfangsbestand (Splitwise, Gruppenbilanz) | + Kasse | je Saldo − 2 × Topfanteil |
 | Sonderzuführung | + X | Finanzierende je − Anteil (bei Spende: verwahrende Person) |
 | Sonderausschüttung (nur aus freiem Topfbetrag) | − X | Empfänger je + Anteil |
 
@@ -125,6 +126,15 @@ Rest-Cents gehen deterministisch reihum (Startpunkt aus der Termin-ID), damit ni
 1. Der 20-€-Beitrag wird **bei jeder Auffüllung** als Beitragsschuld je aktivem Mitglied gebucht.
 2. Sonderzuführungen und -ausschüttungen: **Der Admin wählt je Buchung**, wer zahlt (alle, ausgewählte oder externe
    Spende mit verwahrender Person) und wer bekommt.
+
+### Übernahme aus Splitwise
+
+Splitwise führt die Kasse als Schein-Mitglied „Vereinskasse“, das den Personen den Topfinhalt schuldet
+(Summe der Personen = Schuld der Kasse). Bei der Übernahme der Gruppenbilanz wird der Topf mit diesem Betrag eröffnet
+und je Person `Saldo − 2 × Topfanteil` gebucht. Damit ist der Stand in Stammi (`Saldo − Topfanteil`) genau der
+Splitwise-Stand bei gleichmäßig aufgelöster Kasse. Beispiel 29.10.: Kasse 50 € bei 5 Personen → jeder Stand 10 € unter
+dem Splitwise-Wert. Ein halber Topf bedeutet „ein Treffen im Zyklus schon abgerechnet“: Nach dem nächsten Stammtisch
+wird wieder auf 100 € aufgefüllt. Ein bereits gestarteter, noch nie abgerechneter Kassenstart wird dabei storniert.
 
 ### Hausregeln
 
