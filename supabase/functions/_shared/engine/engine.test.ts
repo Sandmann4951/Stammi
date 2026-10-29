@@ -357,3 +357,51 @@ describe('Stornierte Auslagen blockieren nichts (Fehler vom 28.10.)', () => {
     expect([t.expenses.length, t.notes.length]).toEqual([0, 0]);
   });
 });
+
+describe('Splitwise-Übernahme mit Topf (Gruppenbilanz vom 29.10.)', () => {
+  // Daniel +21,58 · Lars −8,28 · Markus +25,99 · Maximilian +18,90 · Schmid −8,19 · Vereinskasse −50,00
+  const SW = [2158, -828, 2599, 1890, -819];
+  function imported(startFirst = false) {
+    const { s: s0, admin, ids } = setup();
+    // setup() startet die Kasse bereits – optional wieder „frisch“ ohne Start
+    let s = s0;
+    if (!startFirst) s = { ...s0, ledger: [] };
+    s = A.importBalances(s, ctxOf(admin), { balances: ids.map((id, i) => ({ memberId: id, amount: SW[i] })), pot: 5000, settledInCycle: 1, date: '2026-10-29' });
+    return { s, admin, ids };
+  }
+  it('Stand je Person = Splitwise-Saldo minus gleicher Topfanteil, Summe 0, Topf 50 €', () => {
+    const { s, ids } = imported();
+    const st = standings(s);
+    expect(ids.map((id) => st.get(id))).toEqual([1158, -1828, 1599, 890, -1819]);
+    expect(sumStandings(s)).toBe(0);
+    expect(potBalance(s.ledger)).toBe(5000);
+    expect(cycleInfo(s)).toMatchObject({ cycleNo: 1, settledInCycle: 1, reserve: 5000, available: 0 });
+  });
+  it('nächster Stammtisch leert den Topf und füllt genau einmal auf', () => {
+    const { s, admin, ids } = imported();
+    const ev = series(s)[0];
+    const t = A.closeEvent(s, ctxOf(admin), ev.id, ids.slice(0, 4));
+    expect(potBalance(t.ledger)).toBe(10000);
+    expect(t.ledger.filter((e) => e.kind === 'refill')).toHaveLength(1);
+    expect(cycleInfo(t)).toMatchObject({ cycleNo: 2, settledInCycle: 0 });
+    expect(sumStandings(t)).toBe(0);
+  });
+  it('ersetzt einen bereits gestarteten (noch nicht abgerechneten) Kassenstart', () => {
+    const { s } = imported(true);
+    expect(s.ledger.filter((e) => e.kind === 'reversal')).toHaveLength(1);
+    expect(potBalance(s.ledger)).toBe(5000);
+    expect(sumStandings(s)).toBe(0);
+  });
+  it('prüft Summe, Doppelübernahme und laufende Kasse', () => {
+    const { s: s0, admin, ids } = setup();
+    const fresh = { ...s0, ledger: [] };
+    const bal = ids.map((id, i) => ({ memberId: id, amount: SW[i] }));
+    expect(() => A.importBalances(fresh, ctxOf(admin), { balances: bal, pot: 4000, settledInCycle: 1, date: '' })).toThrow(/ergeben 50,00/);
+    expect(() => A.importBalances(fresh, ctxOf(ids[1]), { balances: bal, pot: 5000, settledInCycle: 1, date: '' })).toThrow(/Admin/);
+    expect(() => A.importBalances(fresh, ctxOf(admin), { balances: bal, pot: 5000, settledInCycle: 0, date: '' })).toThrow(/reicht es nicht/);
+    const once = A.importBalances(fresh, ctxOf(admin), { balances: bal, pot: 5000, settledInCycle: 1, date: '' });
+    expect(() => A.importBalances(once, ctxOf(admin), { balances: bal, pot: 5000, settledInCycle: 1, date: '' })).toThrow(/schon übernommen/);
+    const running = A.closeEvent(s0, ctxOf(admin), series(s0)[0].id, ids);
+    expect(() => A.importBalances(running, ctxOf(admin), { balances: bal, pot: 5000, settledInCycle: 1, date: '' })).toThrow(/läuft schon/);
+  });
+});

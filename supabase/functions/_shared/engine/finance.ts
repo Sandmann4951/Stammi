@@ -128,6 +128,8 @@ export function cycleInfo(state: State): CycleInfo {
   let total = 0;
   for (const e of activeEntries(state.ledger).sort((a, b) => a.seq - b.seq)) {
     if (e.kind === 'refill') { cycleNo = (e.meta?.cycleNo as number) ?? cycleNo + 1; settled = 0; }
+    // Übernommener Stand (Splitwise) mit Topf: setzt den laufenden Zyklus fort
+    if (e.kind === 'opening' && typeof e.meta?.cycleNo === 'number') { cycleNo = e.meta.cycleNo as number; settled = Number(e.meta.settledInCycle ?? 0); }
     if (e.kind === 'payout') { settled++; total++; }
   }
   const pot = potBalance(state.ledger);

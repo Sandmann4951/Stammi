@@ -19,6 +19,7 @@ export const ACTIONS = {
   addSettlement: A.addSettlement,
   reverseEntry: A.reverseEntry,
   importOpening: A.importOpening,
+  importBalances: A.importBalances,
   specialIn: A.specialIn,
   specialOut: A.specialOut,
   addNote: A.addNote,
