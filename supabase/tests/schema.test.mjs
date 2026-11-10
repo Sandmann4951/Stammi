@@ -67,6 +67,24 @@ await db.exec(book('b4', 6, 'payout', 'payout:t1', [['pot', -5000], ['m1', 2500]
 await expectErr(`insert into attendance values ('gA','t1','m2','yes',null,now()), ('gA','t1','m2','no',null,now())`, /duplicate key/, 'Doppelte Teilnahme verhindert');
 await expectErr(`insert into events (group_id,id,type,title,date,end_date,status,created_at,created_by) values ('gA','t2','stammtisch','X','2026-11-01','2026-11-03','planned',now(),'m1')`, /check constraint/, 'Mehrtägiger Stammtisch abgelehnt');
 
+console.log('\nFoto-Bewertungen & Kommentare');
+await db.exec(`insert into media_assets values ('gA','f1','t1','m1',now(),10,10,100), ('gB','f9','t9','m9',now(),10,10,100);
+  insert into media_votes values ('gA','f1','m2',1,now()), ('gB','f9','m9',-1,now());
+  insert into media_comments values ('gA','c1','f1','m2','Super Foto',now(),now()), ('gB','c9','f9','m9','geheim',now(),now());
+  update events set cover_media_id = 'f1' where id = 't1';`);
+await as(U2);
+ok((await rows('select media_id from media_votes')).map((r) => r.media_id).join() === 'f1', 'Bewertungen nur der eigenen Gruppe sichtbar');
+ok((await rows('select id from media_comments')).map((r) => r.id).join() === 'c1', 'Foto-Kommentare nur der eigenen Gruppe sichtbar');
+ok((await rows("select cover_media_id from events where id = 't1'"))[0]?.cover_media_id === 'f1', 'Titelbild am Termin lesbar');
+const st = (await rows(`select group_state('gA') as s`))[0].s;
+ok(st.media_votes.length === 1 && st.media_comments.length === 1, 'Gruppenzustand enthält Bewertungen und Kommentare');
+await expectErr(`insert into media_votes values ('gA','f1','m1',1,now())`, /permission denied/, 'Keine direkten Bewertungen');
+await expectErr(`insert into media_comments values ('gA','c2','f1','m2','x',now(),now())`, /permission denied/, 'Keine direkten Kommentare');
+await db.exec('reset role');
+await expectErr(`insert into media_comments values ('gA','c3','f1','m2','',now(),now())`, /check constraint/, 'Leerer Kommentar abgelehnt');
+await db.exec(`delete from media_assets where group_id = 'gA' and id = 'f1'`);
+ok((await rows(`select count(*)::int n from media_votes where group_id = 'gA'`))[0].n === 0 && (await rows(`select count(*)::int n from media_comments where group_id = 'gA'`))[0].n === 0, 'Foto gelöscht → Bewertungen und Kommentare weg');
+
 console.log('\nKalender-Abo');
 await as(U1);
 await expectErr('select * from calendar_tokens', /permission denied/, 'Kalender-Links sind für App-Nutzer unsichtbar');

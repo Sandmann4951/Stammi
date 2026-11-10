@@ -405,3 +405,67 @@ describe('Splitwise-Übernahme mit Topf (Gruppenbilanz vom 29.10.)', () => {
     expect(() => A.importBalances(running, ctxOf(admin), { balances: bal, pot: 5000, settledInCycle: 1, date: '' })).toThrow(/läuft schon/);
   });
 });
+
+describe('Fotos: Bewertung, Kommentare, Titelbild', () => {
+  const withPhotos = () => {
+    const { s, ids } = setup();
+    const ev = series(s)[0];
+    let t = A.addMedia(s, ctxOf(ids[1]), { id: 'fphoto001', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+    t = A.addMedia(t, ctxOf(ids[2]), { id: 'fphoto002', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+    t = A.addMedia(t, ctxOf(ids[2]), { id: 'fphoto003', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+    return { t, ids, ev };
+  };
+
+  it('eine Stimme je Person und Foto; gleicher Daumen nochmal nimmt zurück', () => {
+    const { t, ids } = withPhotos();
+    let u = A.voteMedia(t, ctxOf(ids[0]), 'fphoto001', 1);
+    u = A.voteMedia(u, ctxOf(ids[1]), 'fphoto001', 1);
+    u = A.voteMedia(u, ctxOf(ids[1]), 'fphoto001', -1);
+    expect(A.mediaScore(u, 'fphoto001')).toEqual({ up: 1, down: 1 });
+    u = A.voteMedia(u, ctxOf(ids[0]), 'fphoto001', 1);
+    expect(A.mediaScore(u, 'fphoto001')).toEqual({ up: 0, down: 1 });
+    expect(() => A.voteMedia(u, ctxOf(ids[0]), 'gibtsnicht', 1)).toThrow(/nicht gefunden/);
+  });
+
+  it('Kommentare: jeder schreibt, nur Autor bearbeitet, Autor oder Admin löscht', () => {
+    const { t, ids } = withPhotos();
+    let u = A.addMediaComment(t, ctxOf(ids[1]), 'fphoto001', '  Prost!  ');
+    const c = u.mediaComments[0];
+    expect(c.text).toBe('Prost!');
+    expect(() => A.addMediaComment(u, ctxOf(ids[1]), 'fphoto001', '   ')).toThrow(/leer/);
+    expect(() => A.updateMediaComment(u, ctxOf(ids[2]), c.id, 'fremd')).toThrow(/eigene/);
+    expect(() => A.deleteMediaComment(u, ctxOf(ids[2]), c.id)).toThrow(/eigene/);
+    u = A.updateMediaComment(u, ctxOf(ids[1]), c.id, 'Prost, Leute!');
+    expect(u.mediaComments[0].text).toBe('Prost, Leute!');
+    expect(A.deleteMediaComment(u, ctxOf(ids[0]), c.id).mediaComments).toEqual([]); // Admin
+  });
+
+  it('Titelbild: gewählt > beliebtestes > erstes; nur Fotos des Termins', () => {
+    const { t, ids, ev } = withPhotos();
+    expect(A.coverOf(t, ev.id)?.id).toBe('fphoto001');
+    let u = A.voteMedia(t, ctxOf(ids[0]), 'fphoto003', 1);
+    expect(A.coverOf(u, ev.id)?.id).toBe('fphoto003');
+    u = A.setEventCover(u, ctxOf(ids[4]), ev.id, 'fphoto002');
+    expect(A.coverOf(u, ev.id)?.id).toBe('fphoto002');
+    const other = series(u)[1];
+    expect(() => A.setEventCover(u, ctxOf(ids[0]), other.id, 'fphoto002')).toThrow(/anderen Termin/);
+    expect(A.coverOf(u, other.id)).toBeUndefined();
+    u = A.setEventCover(u, ctxOf(ids[0]), ev.id, null);
+    expect(A.coverOf(u, ev.id)?.id).toBe('fphoto003');
+  });
+
+  it('Foto löschen nimmt Bewertungen, Kommentare und Titelbild mit; Termin löschen alles', () => {
+    const { t, ids, ev } = withPhotos();
+    let u = A.voteMedia(t, ctxOf(ids[0]), 'fphoto002', 1);
+    u = A.addMediaComment(u, ctxOf(ids[0]), 'fphoto002', 'x');
+    u = A.setEventCover(u, ctxOf(ids[0]), ev.id, 'fphoto002');
+    u = A.deleteMedia(u, ctxOf(ids[2]), 'fphoto002');
+    expect([u.mediaVotes.length, u.mediaComments.length, u.events.find((e) => e.id === ev.id)?.coverMediaId]).toEqual([0, 0, undefined]);
+    const r = A.createEvent(u, ctxOf(ids[1]), { type: 'event', title: 'Grillen', date: '2026-11-20', time: '19:00', location: '', description: '' });
+    let w = A.addMedia(r.state, ctxOf(ids[1]), { id: 'fgrill001', eventId: r.id, width: 10, height: 10, bytes: 100 });
+    w = A.voteMedia(w, ctxOf(ids[2]), 'fgrill001', 1);
+    w = A.addMediaComment(w, ctxOf(ids[2]), 'fgrill001', 'lecker');
+    w = A.deleteEvent(w, ctxOf(ids[1]), r.id);
+    expect([w.media.some((m) => m.id === 'fgrill001'), w.mediaVotes.length, w.mediaComments.length]).toEqual([false, 0, 0]);
+  });
+});

@@ -61,6 +61,8 @@ export interface StEvent {
   createdBy: string;
   closedAt?: ISODateTime;
   cancelReason?: string;
+  /** Titelbild: ein Foto dieses Termins (sonst wird automatisch eins gewählt). */
+  coverMediaId?: string;
 }
 
 export type Rsvp = 'yes' | 'no' | 'open';
@@ -104,6 +106,22 @@ export interface MediaAsset {
   width: number;
   height: number;
   bytes: number;
+}
+
+export interface MediaComment {
+  id: string;
+  mediaId: string;
+  authorId: string;
+  text: string;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface MediaVote {
+  mediaId: string;
+  memberId: string;
+  value: 1 | -1;
+  updatedAt: ISODateTime;
 }
 
 export interface ChecklistItem {
@@ -195,6 +213,8 @@ export interface State {
   expenses: Expense[];
   notes: Note[];
   media: MediaAsset[];
+  mediaComments: MediaComment[];
+  mediaVotes: MediaVote[];
   ideas: Idea[];
   ideaComments: IdeaComment[];
   ideaVotes: IdeaVote[];
