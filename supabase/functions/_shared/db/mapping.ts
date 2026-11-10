@@ -1,7 +1,7 @@
 // Abbildung App-Zustand (State) ⇄ Datenbankzeilen. Wird von der App (Lesen) und der
 // Edge Function (Lesen + Schreiben) gemeinsam genutzt – eine Quelle, keine Abweichungen.
 import type {
-  Attendance, Expense, Idea, IdeaComment, IdeaVote, Invitation, LedgerEntry, MediaAsset, Member, Note, State, StEvent,
+  Attendance, Expense, Idea, IdeaComment, IdeaVote, Invitation, LedgerEntry, MediaAsset, MediaComment, MediaVote, Member, Note, State, StEvent,
 } from '../engine/types.ts';
 
 export type Row = Record<string, unknown>;
@@ -23,7 +23,7 @@ export const TABLES = {
     cols: {
       group_id: 'text', id: 'text', type: 'text', title: 'text', date: 'date', end_date: 'date', time: 'text', end_time: 'text', all_day: 'bool',
       location: 'text', description: 'text', status: 'text', original_series_date: 'date', detached: 'bool', idea_id: 'text',
-      created_at: 'ts', created_by: 'text', closed_at: 'ts', cancel_reason: 'text',
+      created_at: 'ts', created_by: 'text', closed_at: 'ts', cancel_reason: 'text', cover_media_id: 'text',
     },
   },
   ideas: {
@@ -45,6 +45,14 @@ export const TABLES = {
   media_assets: {
     pk: ['group_id', 'id'],
     cols: { group_id: 'text', id: 'text', event_id: 'text', uploader_id: 'text', created_at: 'ts', width: 'int', height: 'int', bytes: 'int' },
+  },
+  media_comments: {
+    pk: ['group_id', 'id'],
+    cols: { group_id: 'text', id: 'text', media_id: 'text', author_id: 'text', text: 'text', created_at: 'ts', updated_at: 'ts' },
+  },
+  media_votes: {
+    pk: ['group_id', 'media_id', 'member_id'],
+    cols: { group_id: 'text', media_id: 'text', member_id: 'text', value: 'smallint', updated_at: 'ts' },
   },
   idea_comments: {
     pk: ['group_id', 'id'],
@@ -99,6 +107,7 @@ export function toRows(s: State): Tables {
       group_id: g, id: e.id, type: e.type, title: e.title, date: e.date, end_date: n(e.endDate), time: e.time, end_time: n(e.endTime), all_day: n(e.allDay),
       location: e.location, description: e.description, status: e.status, original_series_date: n(e.originalSeriesDate), detached: n(e.detached),
       idea_id: n(e.ideaId), created_at: e.createdAt, created_by: e.createdBy, closed_at: n(e.closedAt), cancel_reason: n(e.cancelReason),
+      cover_media_id: n(e.coverMediaId),
     });
   }
   for (const i of s.ideas) t.ideas.push({ group_id: g, id: i.id, title: i.title, description: i.description, creator_id: i.creatorId, status: i.status, checklist: i.checklist, event_id: n(i.eventId), created_at: i.createdAt, updated_at: i.updatedAt, updated_by: i.updatedBy });
@@ -106,6 +115,8 @@ export function toRows(s: State): Tables {
   for (const x of s.expenses) t.expenses.push({ group_id: g, id: x.id, event_id: x.eventId, payer_id: x.payerId, amount_cents: x.amount, description: x.description, created_by: x.createdBy, created_at: x.createdAt, voided_at: n(x.voidedAt), voided_by: n(x.voidedBy) });
   for (const x of s.notes) t.notes.push({ group_id: g, id: x.id, event_id: x.eventId, author_id: x.authorId, text: x.text, decision: x.decision, created_at: x.createdAt, updated_at: x.updatedAt, updated_by: x.updatedBy });
   for (const x of s.media) t.media_assets.push({ group_id: g, id: x.id, event_id: x.eventId, uploader_id: x.uploaderId, created_at: x.createdAt, width: x.width, height: x.height, bytes: x.bytes });
+  for (const x of s.mediaComments) t.media_comments.push({ group_id: g, id: x.id, media_id: x.mediaId, author_id: x.authorId, text: x.text, created_at: x.createdAt, updated_at: x.updatedAt });
+  for (const x of s.mediaVotes) t.media_votes.push({ group_id: g, media_id: x.mediaId, member_id: x.memberId, value: x.value, updated_at: x.updatedAt });
   for (const x of s.ideaComments) t.idea_comments.push({ group_id: g, id: x.id, idea_id: x.ideaId, author_id: x.authorId, text: x.text, created_at: x.createdAt, updated_at: x.updatedAt });
   for (const x of s.ideaVotes) t.idea_votes.push({ group_id: g, idea_id: x.ideaId, member_id: x.memberId, value: x.value, updated_at: x.updatedAt });
   for (const e of s.ledger) {
@@ -153,6 +164,7 @@ export function fromRows(t: Partial<Tables>, currentUserId?: string): State {
       endTime: opt<string>(r.end_time), allDay: opt<boolean>(r.all_day), location: (r.location as string) ?? '', description: (r.description as string) ?? '',
       status: r.status as StEvent['status'], originalSeriesDate: day(r.original_series_date), detached: opt<boolean>(r.detached), ideaId: opt<string>(r.idea_id),
       createdAt: ts(r.created_at)!, createdBy: r.created_by as string, closedAt: ts(r.closed_at), cancelReason: opt<string>(r.cancel_reason),
+      coverMediaId: opt<string>(r.cover_media_id),
     })).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     attendance: get('attendance').map((r): Attendance => ({
       eventId: r.event_id as string, memberId: r.member_id as string, rsvp: r.rsvp as Attendance['rsvp'], present: opt<boolean>(r.present), updatedAt: ts(r.updated_at)!,
@@ -169,6 +181,12 @@ export function fromRows(t: Partial<Tables>, currentUserId?: string): State {
       id: r.id as string, eventId: r.event_id as string, uploaderId: r.uploader_id as string, createdAt: ts(r.created_at)!,
       width: Number(r.width), height: Number(r.height), bytes: Number(r.bytes),
     })).sort(byCreated),
+    mediaComments: get('media_comments').map((r): MediaComment => ({
+      id: r.id as string, mediaId: r.media_id as string, authorId: r.author_id as string, text: r.text as string, createdAt: ts(r.created_at)!, updatedAt: ts(r.updated_at)!,
+    })).sort(byCreated),
+    mediaVotes: get('media_votes').map((r): MediaVote => ({
+      mediaId: r.media_id as string, memberId: r.member_id as string, value: Number(r.value) as 1 | -1, updatedAt: ts(r.updated_at)!,
+    })).sort((a, b) => a.mediaId.localeCompare(b.mediaId) || a.memberId.localeCompare(b.memberId)),
     ideas: get('ideas').map((r): Idea => ({
       id: r.id as string, title: r.title as string, description: (r.description as string) ?? '', creatorId: r.creator_id as string, status: r.status as Idea['status'],
       checklist: json(r.checklist, []), eventId: opt<string>(r.event_id), createdAt: ts(r.created_at)!, updatedAt: ts(r.updated_at)!, updatedBy: r.updated_by as string,

@@ -41,12 +41,13 @@ Tests auf drei Ebenen: Fachlogik (`engine.test.ts`), Datenbank-Abbildung und Ser
 | `groups` | Gruppe, Serienregel (`series` jsonb), `state_version` | |
 | `group_members` | Mitglied je Gruppe, Rolle, Status, Verknüpfung zu `auth.users` | Name je Gruppe eindeutig |
 | `invitations` | Einladungen | nur SHA-256-Hash des Links gespeichert, für Mitglieder unsichtbar |
-| `events` | Stammtische und Events | Seriendatum eindeutig, mehrtägig nur für Events (max. 21 Tage) |
+| `events` | Stammtische und Events | Seriendatum eindeutig, mehrtägig nur für Events (max. 21 Tage); `cover_media_id` = Titelbild |
 | `attendance` | Zusage (`rsvp`) und tatsächliche Anwesenheit (`present`) | eine Zeile je Person und Termin |
 | `expenses` | Auslagen | Integer-Cent, max. 10.000 € |
 | `ledger_entries` + `ledger_legs` | Buchungsjournal | unveränderlich, Nullsumme, Storno nur einmal |
 | `notes` | Notizen und Beschlüsse | |
 | `media_assets` | Foto-Metadaten | Datei in Storage `media/<gruppe>/<termin>/<id>-full.jpg` |
+| `media_comments`, `media_votes` | Kommentare und Daumen je Foto | eine Stimme je Person und Foto; gehen mit dem Foto |
 | `ideas`, `idea_comments`, `idea_votes` | Ideenpool | eine Stimme je Person und Idee |
 
 Abweichungen vom ursprünglichen Vorschlag der Leistungsbeschreibung:
@@ -65,6 +66,7 @@ Abweichungen vom ursprünglichen Vorschlag der Leistungsbeschreibung:
 | Eigene Auslage löschen (bis zum Abschluss) | ✓ | ✓ (danach per Storno) |
 | Ausgleichszahlung eintragen, eigene stornieren | ✓ | ✓ |
 | Notizen, Fotos, Ideen, Kommentare, Bewertungen | ✓ (eigene bearbeiten) | ✓ (fremde nur löschen) |
+| Titelbild eines Termins wählen | ✓ | ✓ |
 | Events anlegen und eigene bearbeiten | ✓ | ✓ |
 | Anwesenheit bestätigen, abrechnen, Abrechnung zurücknehmen | | ✓ |
 | Serie, Absagen, Sonderbuchungen, Anfangsbestand, Einladungen, Rollen | | ✓ |
@@ -141,6 +143,12 @@ wird wieder auf 100 € aufgefüllt. Ein bereits gestarteter, noch nie abgerechn
 * Wer am weitesten im Minus ist, zahlt die Rechnung, sofern anwesend. Die App zeigt die Person auf der Übersicht und schlägt sie beim Erfassen vor.
 * Nach der Abrechnung können nur Admins Auslagen nachtragen oder stornieren.
 * Der Ort wird je Treffen festgelegt (jedes Mitglied darf), nicht in der Serie.
+
+### Titelbild
+
+Jeder Termin mit Fotos hat ein Titelbild: das ausdrücklich gewählte, sonst das mit den meisten Daumen (hoch minus
+runter), sonst das zuerst hochgeladene (`coverOf`). Es steht groß oben am Termin und als Miniatur in Kalender und
+Chronik. Wird das gewählte Foto gelöscht, springt die Auswahl wieder auf automatisch.
 
 ## 6. Kalender-Abo
 

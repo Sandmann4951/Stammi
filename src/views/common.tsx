@@ -2,8 +2,9 @@ import { useState } from 'react';
 import * as A from '@engine/actions';
 import { call } from '@engine/registry';
 import { activeMembers, cycleInfo, MEETINGS_PER_CYCLE, payerRanking } from '@engine/finance';
-import type { Rsvp, State, StEvent } from '@engine/types';
+import type { MediaAsset, Rsvp, State, StEvent } from '@engine/types';
 import { dayCount, diffDays, endOf, euro } from '@engine/util';
+import { useMediaUrl } from '../media';
 import { go, useStore } from '../store';
 import { Avatar, DateBlock, Icon, Money, Pill, timeText } from '../ui';
 
@@ -68,6 +69,7 @@ export function EventRow({ ev }: { ev: StEvent }) {
   const present = ev.status === 'closed' ? A.presentIds(state, ev.id).length : null;
   const photos = state.media.filter((m) => m.eventId === ev.id).length;
   const notes = state.notes.filter((n) => n.eventId === ev.id).length;
+  const cover = photos ? A.coverOf(state, ev.id) : undefined;
   return (
     <a className={`event-row${ev.status === 'cancelled' ? ' cancelled' : ''}`} href={`#termin-${ev.id}`}>
       <DateBlock ev={ev} />
@@ -87,9 +89,14 @@ export function EventRow({ ev }: { ev: StEvent }) {
           {photos > 0 && <span className="er-small"><Icon name="camera" size={14} /> {photos}</span>}
         </div>
       </div>
-      <Icon name="chev" size={18} />
+      {cover ? <RowThumb m={cover} /> : <Icon name="chev" size={18} />}
     </a>
   );
+}
+
+function RowThumb({ m }: { m: MediaAsset }) {
+  const url = useMediaUrl(m.id, 'thumb', m.eventId);
+  return <span className="er-thumb" aria-hidden="true">{url && <img src={url} alt="" loading="lazy" decoding="async" />}</span>;
 }
 
 /** Maßkrug als Füllstandsanzeige des Topfs. */

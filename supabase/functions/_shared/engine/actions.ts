@@ -4,7 +4,7 @@
 
 import {
   DomainError, POT,
-  type Attendance, type Cents, type EventType, type ISODate, type Idea, type IdeaComment, type IdeaStatus, type Leg,
+  type Attendance, type Cents, type EventType, type ISODate, type Idea, type IdeaComment, type IdeaStatus, type MediaAsset, type MediaComment, type Leg,
   type LedgerEntry, type Member, type Rsvp, type SeriesRule, type State, type StEvent,
 } from './types.ts';
 import { activeEntries, activeMembers, cycleInfo, potBalance, CONTRIBUTION_PER_MEMBER, MEETINGS_PER_CYCLE, PAYOUT_PER_MEETING } from './finance.ts';
@@ -90,7 +90,7 @@ export function createGroup(name: string, admin: { name: string; email: string; 
     schema: 2,
     group: { id: uid('g'), name: name.trim() || 'Stammtisch', createdAt: now.toISOString() },
     members: [{ id: adminId, name: admin.name.trim(), email: admin.email.trim(), role: 'admin', status: 'active', joinedAt: now.toISOString(), order: 0, userId: admin.userId }],
-    invitations: [], series: null, events: [], attendance: [], expenses: [], notes: [], media: [], ideas: [], ideaComments: [], ideaVotes: [], ledger: [],
+    invitations: [], series: null, events: [], attendance: [], expenses: [], notes: [], media: [], mediaComments: [], mediaVotes: [], ideas: [], ideaComments: [], ideaVotes: [], ledger: [],
     currentUserId: adminId,
   };
 }
@@ -264,7 +264,7 @@ export function deleteEvent(state: State, ctx: Ctx, id: string): State {
     // nur noch stornierte Auslagen ohne Buchung übrig – sie gehören zum Termin und gehen mit
     expenses: state.expenses.filter((x) => x.eventId !== id),
     notes: state.notes.filter((n) => n.eventId !== id),
-    media: state.media.filter((m) => m.eventId !== id),
+    ...withoutMedia(state, state.media.filter((m) => m.eventId === id).map((m) => m.id)),
     ideas: state.ideas.map((i) => (i.eventId === id ? { ...i, eventId: undefined, status: i.status === 'planned' ? 'open' : i.status } : i)),
   };
 }
@@ -586,7 +586,71 @@ export function deleteMedia(state: State, ctx: Ctx, id: string): State {
   const m = state.media.find((x) => x.id === id);
   if (!m) return state;
   if (m.uploaderId !== ctx.actor && !isAdmin(state, ctx.actor)) throw new DomainError('Nur wer das Foto hochgeladen hat oder der Admin darf es löschen.');
-  return { ...state, media: state.media.filter((x) => x.id !== id) };
+  return { ...state, ...withoutMedia(state, [id]), events: state.events.map((e) => (e.coverMediaId === id ? { ...e, coverMediaId: undefined } : e)) };
+}
+/** Fotos samt Bewertungen und Kommentaren entfernen. */
+function withoutMedia(state: State, ids: string[]): Pick<State, 'media' | 'mediaComments' | 'mediaVotes'> {
+  const gone = new Set(ids);
+  return {
+    media: state.media.filter((x) => !gone.has(x.id)),
+    mediaComments: state.mediaComments.filter((c) => !gone.has(c.mediaId)),
+    mediaVotes: state.mediaVotes.filter((v) => !gone.has(v.mediaId)),
+  };
+}
+function getMedia(state: State, id: string): MediaAsset {
+  const m = state.media.find((x) => x.id === id);
+  if (!m) throw new DomainError('Foto nicht gefunden – vielleicht wurde es gerade gelöscht.');
+  return m;
+}
+/** Daumen hoch/runter für ein Foto. Gleicher Wert nochmal = zurücknehmen. */
+export function voteMedia(state: State, ctx: Ctx, mediaId: string, value: 1 | -1): State {
+  requireMember(state, ctx);
+  getMedia(state, mediaId);
+  if (value !== 1 && value !== -1) throw new DomainError('Ungültige Bewertung.');
+  const prev = state.mediaVotes.find((v) => v.mediaId === mediaId && v.memberId === ctx.actor);
+  const rest = state.mediaVotes.filter((v) => !(v.mediaId === mediaId && v.memberId === ctx.actor));
+  if (prev?.value === value) return { ...state, mediaVotes: rest };
+  return { ...state, mediaVotes: [...rest, { mediaId, memberId: ctx.actor, value, updatedAt: iso(ctx) }] };
+}
+export function mediaScore(state: State, mediaId: string) {
+  const v = state.mediaVotes.filter((x) => x.mediaId === mediaId);
+  return { up: v.filter((x) => x.value === 1).length, down: v.filter((x) => x.value === -1).length };
+}
+export function addMediaComment(state: State, ctx: Ctx, mediaId: string, text: string): State {
+  requireMember(state, ctx);
+  getMedia(state, mediaId);
+  if (!text.trim()) throw new DomainError('Der Kommentar ist leer.');
+  const c: MediaComment = { id: uid('c'), mediaId, authorId: ctx.actor, text: text.trim().slice(0, 1000), createdAt: iso(ctx), updatedAt: iso(ctx) };
+  return { ...state, mediaComments: [...state.mediaComments, c] };
+}
+export function updateMediaComment(state: State, ctx: Ctx, id: string, text: string): State {
+  const c = state.mediaComments.find((x) => x.id === id);
+  if (!c) throw new DomainError('Kommentar nicht gefunden.');
+  if (c.authorId !== ctx.actor) throw new DomainError('Nur eigene Kommentare lassen sich bearbeiten.');
+  if (!text.trim()) throw new DomainError('Der Kommentar ist leer.');
+  return { ...state, mediaComments: state.mediaComments.map((x) => (x.id === id ? { ...x, text: text.trim().slice(0, 1000), updatedAt: iso(ctx) } : x)) };
+}
+export function deleteMediaComment(state: State, ctx: Ctx, id: string): State {
+  const c = state.mediaComments.find((x) => x.id === id);
+  if (!c) return state;
+  if (c.authorId !== ctx.actor && !isAdmin(state, ctx.actor)) throw new DomainError('Nur eigene Kommentare lassen sich löschen.');
+  return { ...state, mediaComments: state.mediaComments.filter((x) => x.id !== id) };
+}
+/** Titelbild des Termins festlegen (jedes Mitglied). null = wieder automatisch. */
+export function setEventCover(state: State, ctx: Ctx, eventId: string, mediaId: string | null): State {
+  requireMember(state, ctx);
+  getEvent(state, eventId);
+  if (mediaId !== null && getMedia(state, mediaId).eventId !== eventId) throw new DomainError('Das Foto gehört zu einem anderen Termin.');
+  return { ...state, events: state.events.map((e) => (e.id === eventId ? { ...e, coverMediaId: mediaId ?? undefined } : e)) };
+}
+/** Titelbild: das gewählte Foto, sonst das beliebteste, sonst das erste. */
+export function coverOf(state: State, eventId: string): MediaAsset | undefined {
+  const ev = state.events.find((e) => e.id === eventId);
+  const photos = state.media.filter((m) => m.eventId === eventId);
+  const chosen = ev?.coverMediaId && photos.find((m) => m.id === ev.coverMediaId);
+  if (chosen) return chosen;
+  const score = (m: MediaAsset) => { const s = mediaScore(state, m.id); return s.up - s.down; };
+  return [...photos].sort((a, b) => score(b) - score(a) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0];
 }
 
 // ---------- Ideen ----------

@@ -5,10 +5,11 @@ import { activeEntries, activeMembers, cycleInfo, PAYOUT_PER_MEETING } from '@en
 import type { MediaAsset, Note, StEvent } from '@engine/types';
 import { endOf, euro } from '@engine/util';
 import { EventFormSheet, ExpenseSheet } from '../forms';
-import { processPhoto, removeMediaBlobs, UploadError, useMediaUrl } from '../media';
+import { processPhoto, UploadError, useMediaUrl } from '../media';
 import { go, useStore } from '../store';
 import { Avatar, Empty, Field, fmtDateTime, fmtRange, Icon, memberName, MemberPicker, Money, Pill, Section, Sheet, timeText, whenText } from '../ui';
 import { LocationEditor, PayerCard, RsvpButtons, StatusPill, TypeTag } from './common';
+import { Gallery } from './Gallery';
 
 export function EventDetail({ id }: { id: string }) {
   const { state, me, admin, today, run } = useStore();
@@ -18,17 +19,22 @@ export function EventDetail({ id }: { id: string }) {
   const [close, setClose] = useState(false);
   const [reopen, setReopen] = useState(false);
   const [exp, setExp] = useState(false);
+  const [gallery, setGallery] = useState<string | null>(null);
   if (!ev) return <div className="page"><Empty icon="cal" title="Termin nicht gefunden" action={<a className="btn" href="#kalender">Zum Kalender</a>}>Vielleicht wurde er gelöscht.</Empty></div>;
 
   const canEdit = admin || (ev.type === 'event' && ev.createdBy === me.id);
   const idea = state.ideas.find((i) => i.id === ev.ideaId || i.eventId === ev.id);
   const canClose = admin && ev.status === 'planned' && endOf(ev) <= today;
+  const photos = state.media.filter((m) => m.eventId === ev.id);
+  const cover = A.coverOf(state, ev.id);
+  const galleryStart = gallery ? Math.max(0, photos.findIndex((m) => m.id === gallery)) : 0;
 
   return (
     <div className="page detail">
       <a className="back" href="#kalender"><Icon name="back" size={18} /> Kalender</a>
 
-      <header className={`detail-hero${ev.status === 'cancelled' ? ' cancelled' : ''}`}>
+      <header className={`detail-hero${ev.status === 'cancelled' ? ' cancelled' : ''}${cover ? ' has-cover' : ''}`}>
+        {cover && <CoverBanner m={cover} count={photos.length} onOpen={() => setGallery(cover.id)} />}
         <div className="dh-tags"><TypeTag ev={ev} /><StatusPill ev={ev} today={today} />{ev.detached && ev.status !== 'cancelled' && <Pill tone="muted">einzeln verschoben</Pill>}</div>
         <h1>{ev.title}</h1>
         <p className="dh-date">{fmtRange(ev)} <span>· {whenText(ev, today)}</span></p>
@@ -62,7 +68,8 @@ export function EventDetail({ id }: { id: string }) {
 
       {ev.status !== 'cancelled' && <Expenses ev={ev} onAdd={() => setExp(true)} />}
       <Notes ev={ev} />
-      <Photos ev={ev} />
+      <Photos ev={ev} onOpen={setGallery} />
+      {gallery && photos.length > 0 && <Gallery ev={ev} photos={photos} start={galleryStart} onClose={() => setGallery(null)} />}
 
       <EventFormSheet open={edit} onClose={() => setEdit(false)} event={ev} />
       <CancelSheet open={cancel} onClose={() => setCancel(false)} ev={ev} />
@@ -243,33 +250,42 @@ function Notes({ ev }: { ev: StEvent }) {
   );
 }
 
-function PhotoTile({ m, onOpen }: { m: MediaAsset; onOpen: () => void }) {
-  const url = useMediaUrl(m.id, 'thumb', m.eventId);
+function CoverBanner({ m, count, onOpen }: { m: MediaAsset; count: number; onOpen: () => void }) {
+  const full = useMediaUrl(m.id, 'full', m.eventId);
+  const thumb = useMediaUrl(m.id, 'thumb', m.eventId);
+  const url = full || thumb;
   return (
-    <button type="button" className="photo" onClick={onOpen} aria-label="Foto vergrößern" style={url ? { backgroundImage: `url(${url})` } : undefined}>
-      {url === null && <span className="photo-missing">Foto nicht verfügbar</span>}
+    <button type="button" className="cover-banner" onClick={onOpen} aria-label={`Titelbild – ${count} Foto${count > 1 ? 's' : ''} ansehen`}
+      style={url ? { backgroundImage: `url(${url})` } : undefined}>
+      <span className="cb-count"><Icon name="camera" size={14} /> {count}</span>
     </button>
   );
 }
 
-function Lightbox({ m, onClose }: { m: MediaAsset | null; onClose: () => void }) {
-  const { state, me, admin, run } = useStore();
-  const url = useMediaUrl(m?.id ?? 'none', 'full', m?.eventId);
-  if (!m) return null;
+function PhotoTile({ m, onOpen }: { m: MediaAsset; onOpen: () => void }) {
+  const { state } = useStore();
+  const url = useMediaUrl(m.id, 'thumb', m.eventId);
+  const ev = state.events.find((e) => e.id === m.eventId);
+  const score = A.mediaScore(state, m.id);
+  const comments = state.mediaComments.filter((c) => c.mediaId === m.id).length;
   return (
-    <Sheet open onClose={onClose} title="Foto" wide
-      footer={(admin || m.uploaderId === me.id) ? <button className="btn danger" type="button" onClick={() => { if (run(call('deleteMedia', m.id), 'Foto gelöscht')) { removeMediaBlobs(m.id); onClose(); } }}><Icon name="trash" size={16} /> Foto löschen</button> : undefined}>
-      {url ? <img className="lightbox-img" src={url} alt={`Foto von ${memberName(state, m.uploaderId)}`} /> : <p className="muted-line">Foto wird geladen …</p>}
-      <p className="fineprint">Hochgeladen von {memberName(state, m.uploaderId)} am {fmtDateTime(m.createdAt)} · {Math.round(m.bytes / 1024)} KB</p>
-    </Sheet>
+    <button type="button" className="photo" onClick={onOpen} aria-label="Foto ansehen" style={url ? { backgroundImage: `url(${url})` } : undefined}>
+      {url === null && <span className="photo-missing">Foto nicht verfügbar</span>}
+      {ev?.coverMediaId === m.id && <span className="photo-cover" title="Titelbild"><Icon name="star" size={13} stroke={2.2} /></span>}
+      {(score.up > 0 || comments > 0) && (
+        <span className="photo-badges">
+          {score.up > 0 && <span><Icon name="up" size={12} stroke={2.2} />{score.up}</span>}
+          {comments > 0 && <span><Icon name="chat" size={12} stroke={2.2} />{comments}</span>}
+        </span>
+      )}
+    </button>
   );
 }
 
-function Photos({ ev }: { ev: StEvent }) {
+function Photos({ ev, onOpen }: { ev: StEvent; onOpen: (id: string) => void }) {
   const { state, run, toast } = useStore();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(0);
-  const [open, setOpen] = useState<MediaAsset | null>(null);
   const photos = state.media.filter((m) => m.eventId === ev.id);
   const onFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -291,16 +307,16 @@ function Photos({ ev }: { ev: StEvent }) {
   return (
     <Section title="Fotos" action={<button className="btn small" type="button" onClick={() => input.current?.click()} disabled={busy > 0}><Icon name="camera" size={16} /> {busy ? `Lädt … (${busy})` : 'Hochladen'}</button>}>
       <input ref={input} id={`photo-input-${ev.id}`} type="file" accept="image/*" multiple hidden onChange={(e) => onFiles(e.target.files)} />
-      {photos.length ? (
-        <div className="photo-grid">{photos.map((m) => <PhotoTile key={m.id} m={m} onOpen={() => setOpen(m)} />)}</div>
-      ) : (
+      {photos.length ? (<>
+        <div className="photo-grid">{photos.map((m) => <PhotoTile key={m.id} m={m} onOpen={() => onOpen(m.id)} />)}</div>
+        <p className="fineprint">Antippen zum Ansehen · wischen fürs nächste · Daumen, Kommentare und Titelbild in der Ansicht</p>
+      </>) : (
         <button className="drop" type="button" onClick={() => input.current?.click()}>
           <Icon name="camera" size={22} />
           <span>Fotos vom Abend hinzufügen</span>
           <small>JPEG, PNG oder WebP bis 20 MB · werden automatisch verkleinert</small>
         </button>
       )}
-      <Lightbox m={open} onClose={() => setOpen(null)} />
     </Section>
   );
 }

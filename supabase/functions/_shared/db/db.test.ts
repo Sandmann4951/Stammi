@@ -28,6 +28,15 @@ beforeAll(async () => {
   db = { query: async (t, p) => (await pg.query(t, p)).rows };
   state = demoState(new Date());
   state = { ...state, members: state.members.map((m, i) => ({ ...m, userId: UID[i] })) };
+  // Fotos mit Bewertung, Kommentar und Titelbild, damit auch diese Tabellen durchlaufen
+  const [m0, m1] = state.members;
+  const ev = state.events.find((e) => e.status === 'closed')!;
+  const c0 = { actor: m0.id, now: new Date() }, c1 = { actor: m1.id, now: new Date() };
+  state = A.addMedia(state, c0, { id: 'fdbtest01', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+  state = A.addMedia(state, c1, { id: 'fdbtest02', eventId: ev.id, width: 10, height: 10, bytes: 100 });
+  state = A.voteMedia(state, c1, 'fdbtest01', 1);
+  state = A.addMediaComment(state, c1, 'fdbtest01', 'Bestes Foto!');
+  state = A.setEventCover(state, c0, ev.id, 'fdbtest02');
   for (const u of [...UID, OUTSIDER]) await pg.query('insert into auth.users (id) values ($1)', [u]);
 });
 

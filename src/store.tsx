@@ -22,7 +22,10 @@ function migrate(s: any): State | null {
     s.events = s.events.map((e: StEvent) => (e.originalSeriesDate && e.status === 'planned' && !e.detached && e.date > today ? { ...e, location: '' } : e));
     s.schema = 2;
   }
-  return s.schema === 2 ? (s as State) : null;
+  if (s.schema !== 2) return null;
+  s.mediaComments ??= [];
+  s.mediaVotes ??= [];
+  return s as State;
 }
 
 function load(): State {
