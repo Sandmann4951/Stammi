@@ -150,6 +150,14 @@ Jeder Termin mit Fotos hat ein Titelbild: das ausdrücklich gewählte, sonst das
 runter), sonst das zuerst hochgeladene (`coverOf`). Es steht groß oben am Termin und als Miniatur in Kalender und
 Chronik. Wird das gewählte Foto gelöscht, springt die Auswahl wieder auf automatisch.
 
+### Statistik
+
+Kalender → Statistik (`engine/stats.ts`, getestet). Gezählt werden nur abgerechnete Termine (Anwesenheit bestätigt) und
+gültige Buchungen; der Zeitraum gilt nach Termin- bzw. Buchungsdatum. Teilnahmequote = Stammtische dabei ÷ Stammtische
+seit Beitritt. „Wort gehalten“ = Zusagen, bei denen die Person auch kam. Ausgelegt = gebuchte Auslagen als Zahler,
+Verzehr = eigener Anteil daran, aus der Kasse = Topfgutschriften. Titel bekommt, wer eine Kategorie anführt
+(Quote erst ab 3 möglichen Terminen, „Wort gehalten“ ab 3 Zusagen); haben alle denselben Wert, gibt es keinen Titel.
+
 ## 6. Kalender-Abo
 
 * Jedes Mitglied erzeugt unter *Gruppe & Profil* einen persönlichen Abo-Link (`webcal://…/functions/v1/calendar?t=…`).

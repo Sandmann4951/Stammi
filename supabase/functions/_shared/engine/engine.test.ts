@@ -3,6 +3,7 @@ import * as A from './actions.ts';
 import * as finance from './finance.ts';
 import { breakdown, cycleInfo, ledgerCsv, potBalance, rawBalances, standings, suggestPayments } from './finance.ts';
 import { POT, type State } from './types.ts';
+import { groupStats, memberStats, rank } from './stats.ts';
 import { dayCount, daysOf, parseEuro, recordIds, replayIds, splitCents } from './util.ts';
 
 const NOW = new Date('2026-10-27T18:00:00');
@@ -467,5 +468,54 @@ describe('Fotos: Bewertung, Kommentare, Titelbild', () => {
     w = A.addMediaComment(w, ctxOf(ids[2]), 'fgrill001', 'lecker');
     w = A.deleteEvent(w, ctxOf(ids[1]), r.id);
     expect([w.media.some((m) => m.id === 'fgrill001'), w.mediaVotes.length, w.mediaComments.length]).toEqual([false, 0, 0]);
+  });
+});
+
+describe('Statistik', () => {
+  const build = () => {
+    const base = setup();
+    const ids = base.ids;
+    let s: State = { ...base.s, members: base.s.members.map((m) => ({ ...m, joinedAt: '2026-08-01T00:00:00.000Z' })) };
+    const [e1, e2, e3] = series(s);
+    s = A.addExpense(s, ctxOf(ids[1]), { eventId: e1.id, payerId: ids[1], amount: 4000, description: 'Runde' });
+    s = A.setRsvp(s, ctxOf(ids[3]), e3.id, ids[3], 'yes');
+    s = A.setRsvp(s, ctxOf(ids[0]), e3.id, ids[0], 'yes');
+    s = A.closeEvent(s, ctxOf(base.admin), e1.id, ids);
+    s = A.closeEvent(s, ctxOf(base.admin), e2.id, [ids[0], ids[1]]);
+    s = A.closeEvent(s, ctxOf(base.admin), e3.id, [ids[0], ids[2]]);
+    return { s, ids, e3 };
+  };
+
+  it('Teilnahme, Quote, Serien und Zuverlässigkeit', () => {
+    const { s, ids } = build();
+    const by = new Map(memberStats(s).map((r) => [r.memberId, r]));
+    expect([by.get(ids[0])!.stammtische, by.get(ids[0])!.rate, by.get(ids[0])!.bestStreak, by.get(ids[0])!.streak]).toEqual([3, 1, 3, 3]);
+    expect([by.get(ids[1])!.stammtische, by.get(ids[1])!.rate, by.get(ids[1])!.bestStreak, by.get(ids[1])!.streak]).toEqual([2, 2 / 3, 2, 0]);
+    expect(by.get(ids[3])!.reliability).toBe(0); // zugesagt, nicht gekommen
+    expect(by.get(ids[0])!.reliability).toBe(1);
+    expect(by.get(ids[4])!.reliability).toBeNull(); // nie zugesagt
+  });
+
+  it('Geld: ausgelegt, Anteil, aus dem Topf, Beiträge', () => {
+    const { s, ids } = build();
+    const by = new Map(memberStats(s).map((r) => [r.memberId, r]));
+    expect([by.get(ids[1])!.paid, by.get(ids[1])!.paidCount, by.get(ids[1])!.consumed]).toEqual([4000, 1, 800]);
+    expect(by.get(ids[0])!.consumed).toBe(800);
+    expect(ids.map((id) => by.get(id)!.fromPot)).toEqual([6000, 3500, 3500, 1000, 1000]);
+    expect(ids.map((id) => by.get(id)!.contributed)).toEqual([4000, 4000, 4000, 4000, 4000]);
+    const g = groupStats(s);
+    expect([g.stammtische, g.expenseTotal, g.potPaidOut, g.maxPresent]).toEqual([3, 4000, 15000, 5]);
+    expect(g.avgPresent).toBe(3);
+  });
+
+  it('Zeitraum filtert, Rangliste teilt Plätze', () => {
+    const { s, ids, e3 } = build();
+    const one = memberStats(s, { from: e3.date, to: e3.date });
+    expect(one.find((r) => r.memberId === ids[0])!.stammtische).toBe(1);
+    expect(one.find((r) => r.memberId === ids[1])!.stammtische).toBe(0);
+    expect(groupStats(s, { from: e3.date }).stammtische).toBe(1);
+    const r = rank(memberStats(s), (x) => x.stammtische);
+    expect(r.map((x) => x.place)).toEqual([1, 2, 2, 4, 4]);
+    expect(rank(memberStats(s), (x) => x.reliability).length).toBe(2); // nur wer je zugesagt hat
   });
 });
