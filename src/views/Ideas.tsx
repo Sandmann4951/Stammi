@@ -4,9 +4,9 @@ import { call } from '@engine/registry';
 import type { Idea, IdeaStatus } from '@engine/types';
 import { endOf, uid } from '@engine/util';
 import { EventFormSheet } from '../forms';
-import { go, useStore } from '../store';
+import { go, goBack, useStore } from '../store';
 import { Avatar, Empty, Field, fmtDateTime, fmtRange, timeText, Icon, memberName, Pill, Section, Segmented, Sheet } from '../ui';
-import { sortEvents } from './common';
+import { BackButton, sortEvents } from './common';
 
 const STATUS_LABEL: Record<IdeaStatus, string> = { open: 'Offen', planned: 'Geplant', done: 'Erledigt' };
 
@@ -177,7 +177,7 @@ export function IdeaDetail({ id }: { id: string }) {
 
   return (
     <div className="page detail">
-      <a className="back" href="#ideen"><Icon name="back" size={18} /> Ideen</a>
+      <BackButton fallback="ideen" fallbackLabel="Ideen" />
       <header className="detail-hero idea-hero">
         {editing ? (
           <form className="form" onSubmit={(e) => { e.preventDefault(); if (upd({ title, description: desc }, 'Gespeichert')) setEditing(false); }}>
@@ -195,7 +195,7 @@ export function IdeaDetail({ id }: { id: string }) {
             {(owner || admin) && (
               <div className="dh-actions">
                 {owner && <button className="btn small" type="button" onClick={() => { setTitle(idea.title); setDesc(idea.description); setEditing(true); }}><Icon name="edit" size={16} /> Bearbeiten</button>}
-                <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteIdea', idea.id), 'Idee gelöscht')) go('ideen'); }}><Icon name="trash" size={16} /> Löschen</button>
+                <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteIdea', idea.id), 'Idee gelöscht')) goBack('ideen'); }}><Icon name="trash" size={16} /> Löschen</button>
               </div>
             )}
             {!owner && <p className="fineprint"><Icon name="lock" size={14} /> Bearbeiten kann nur {creator?.name}. Du kannst bewerten und kommentieren.</p>}
