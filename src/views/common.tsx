@@ -209,13 +209,13 @@ export function PayerCard({ ev }: { ev?: StEvent }) {
 
 // ---------- Zurück-Knopf ----------
 /** Ansicht des Kalenders (Bereich, Darstellung, Monat …) – bleibt erhalten, wenn man in einen Termin und zurück geht. */
-export const calendarView: { tab: 'next' | 'past'; mode: 'list' | 'month' | 'year'; q: string; ym?: string; year?: number; day?: string } = {
+export const calendarView: { tab: 'next' | 'past' | 'stats'; mode: 'list' | 'month' | 'year'; q: string; ym?: string; year?: number; day?: string; statPeriod?: string; statCat?: string } = {
   tab: 'next', mode: 'list', q: '',
 };
 
 function labelOf(hash: string): string {
   if (hash === '' || hash === '#uebersicht') return 'Übersicht';
-  if (hash === '#kalender') return calendarView.tab === 'past' ? 'Chronik' : 'Kalender';
+  if (hash === '#kalender') return calendarView.tab === 'past' ? 'Chronik' : calendarView.tab === 'stats' ? 'Statistik' : 'Kalender';
   if (hash === '#kasse') return 'Kasse';
   if (hash === '#ideen') return 'Ideen';
   if (hash === '#mehr') return 'Mehr';

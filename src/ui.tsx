@@ -36,6 +36,9 @@ const paths: Record<string, ReactNode> = {
   wallet: <><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" /><rect x="4" y="8" width="16.5" height="11" rx="2" /><circle cx="16" cy="13.5" r="1.2" /></>,
   left: <path d="M14.5 6l-6 6 6 6" />,
   right: <path d="M9.5 6l6 6-6 6" />,
+  trophy: <><path d="M8 4h8v5a4 4 0 0 1-8 0z" /><path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3M12 13v4M8.5 20h7M10 17h4" /></>,
+  crown: <path d="M4 17.5 3 8l5 4 4-6 4 6 5-4-1 9.5z" />,
+  flame: <path d="M12 21c-3.6 0-6-2.4-6-5.6 0-3.4 2.8-5 3.6-8.4 2.2 1.4 3 3.2 3 4.8 1-.6 1.6-1.7 1.7-2.9C16.4 10.6 18 13 18 15.4 18 18.6 15.6 21 12 21z" />,
   lock: <><rect x="5" y="11" width="14" height="9.5" rx="2" /><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" /></>,
 };
 export function Icon({ name, size = 20, stroke = 1.8 }: { name: keyof typeof paths | string; size?: number; stroke?: number }) {

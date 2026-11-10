@@ -7,6 +7,7 @@ import { EventFormSheet } from '../forms';
 import { go, useStore } from '../store';
 import { Empty, Field, fmtDate, fmtRange, Icon, monthLabel, Segmented, Sheet } from '../ui';
 import { calendarView, EventRow, sortEvents } from './common';
+import { Stats } from './Stats';
 
 export function seriesText(r: SeriesRule) {
   const wd = WEEKDAYS[weekdayMon0(r.startDate)];
@@ -235,7 +236,7 @@ type Mode = 'list' | 'month' | 'year';
 export function Calendar() {
   const { state, admin, today } = useStore();
   // Ansicht merken: Wer in einen Termin geht und zurückkommt, landet wieder genau hier
-  const [tab, setTab] = useState<'next' | 'past'>(calendarView.tab);
+  const [tab, setTab] = useState<'next' | 'past' | 'stats'>(calendarView.tab);
   const [mode, setMode] = useState<Mode>(calendarView.mode);
   const [q, setQ] = useState(calendarView.q);
   const [ym, setYm] = useState(calendarView.ym ?? ymOf(today));
@@ -280,7 +281,7 @@ export function Calendar() {
         <div className="attention"><Icon name="cal" /><div><strong>Noch keine Terminserie</strong><span>Lege fest, wann ihr euch regelmäßig trefft.</span></div>
           <button className="btn small primary" type="button" onClick={() => setSerOpen(true)}>Einrichten</button></div>
       )}
-      <Segmented label="Bereich" value={tab} onChange={setTab} options={[{ value: 'next', label: 'Kommend' }, { value: 'past', label: 'Chronik' }]} />
+      <Segmented label="Bereich" value={tab} onChange={setTab} options={[{ value: 'next', label: 'Kommend' }, { value: 'past', label: 'Chronik' }, { value: 'stats', label: 'Statistik' }]} />
 
       {tab === 'past' && (
         <div className="chron-tools">
@@ -293,7 +294,7 @@ export function Calendar() {
         </div>
       )}
 
-      {tab === 'past' && q ? (
+      {tab === 'stats' ? <Stats /> : tab === 'past' && q ? (
         hits.length ? (
           <section className="month">
             <h2 className="month-label">{hits.length} Treffer</h2>
