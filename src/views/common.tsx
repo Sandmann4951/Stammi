@@ -5,7 +5,7 @@ import { activeMembers, cycleInfo, MEETINGS_PER_CYCLE, payerRanking } from '@eng
 import type { MediaAsset, Rsvp, State, StEvent } from '@engine/types';
 import { dayCount, diffDays, endOf, euro } from '@engine/util';
 import { useMediaUrl } from '../media';
-import { go, useStore } from '../store';
+import { go, goBack, previousHash, useStore } from '../store';
 import { Avatar, DateBlock, Icon, Money, Pill, timeText } from '../ui';
 
 export function sortEvents(a: StEvent, b: StEvent) {
@@ -204,5 +204,33 @@ export function PayerCard({ ev }: { ev?: StEvent }) {
         </>
       ) : <p className="pc-sub">Alle sind ausgeglichen – wer mag, zahlt.</p>}
     </a>
+  );
+}
+
+// ---------- Zurück-Knopf ----------
+/** Ansicht des Kalenders (Bereich, Darstellung, Monat …) – bleibt erhalten, wenn man in einen Termin und zurück geht. */
+export const calendarView: { tab: 'next' | 'past'; mode: 'list' | 'month' | 'year'; q: string; ym?: string; year?: number; day?: string } = {
+  tab: 'next', mode: 'list', q: '',
+};
+
+function labelOf(hash: string): string {
+  if (hash === '' || hash === '#uebersicht') return 'Übersicht';
+  if (hash === '#kalender') return calendarView.tab === 'past' ? 'Chronik' : 'Kalender';
+  if (hash === '#kasse') return 'Kasse';
+  if (hash === '#ideen') return 'Ideen';
+  if (hash === '#mehr') return 'Mehr';
+  if (hash.startsWith('#termin-')) return 'Termin';
+  if (hash.startsWith('#idee-')) return 'Idee';
+  return 'Zurück';
+}
+
+/** Geht dorthin zurück, wo man herkam (inkl. Ansicht und Scrollposition). Ohne Verlauf: zur Ausweichseite. */
+export function BackButton({ fallback, fallbackLabel }: { fallback: string; fallbackLabel: string }) {
+  const prev = previousHash();
+  const label = prev === undefined ? fallbackLabel : labelOf(prev);
+  return (
+    <button className="back" type="button" onClick={() => goBack(fallback)} aria-label={`Zurück zu ${label}`}>
+      <Icon name="back" size={18} /> {label}
+    </button>
   );
 }

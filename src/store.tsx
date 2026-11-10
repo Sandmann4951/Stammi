@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as A from '@engine/actions';
 import { applyCall, stateOf, type ActionName, type ActionResult, type Call } from '@engine/registry';
 import { DomainError, type Member, type State, type StEvent } from '@engine/types';
@@ -250,17 +250,62 @@ export function parseHash(h: string): Route {
   return { name: 'uebersicht' };
 }
 
+// ---------- Verlauf: echtes „Zurück“ samt Scrollposition ----------
+// Vorwärts = Klick auf einen App-Link oder go(). Alles andere (Zurück-Geste, Zurück-Knopf) stellt die
+// vorherige Ansicht samt Scrollposition wieder her.
+const navStack: string[] = [];
+const scrollMem = new Map<string, number>();
+let curHash = typeof location !== 'undefined' ? location.hash : '';
+let forward = false;
+let restoreY: number | null = null;
+const norm = (h: string) => (h === '#' ? '' : h);
+
+if (typeof window !== 'undefined') {
+  // Scrollposition stellt die App selbst wieder her (der Browser würde bei Hash-Wechseln dazwischenfunken)
+  try { history.scrollRestoration = 'manual'; } catch { /* egal */ }
+  document.addEventListener('click', (e) => {
+    const a = (e.target as Element | null)?.closest?.('a[href^="#"]');
+    if (a && norm(a.getAttribute('href') ?? '') !== norm(location.hash)) forward = true;
+  }, true);
+  window.addEventListener('scroll', () => scrollMem.set(curHash, window.scrollY), { passive: true });
+  window.addEventListener('hashchange', () => {
+    const next = norm(location.hash);
+    if (forward) { navStack.push(curHash); restoreY = 0; }
+    else if (navStack.length && navStack[navStack.length - 1] === next) { navStack.pop(); restoreY = scrollMem.get(next) ?? 0; }
+    else { navStack.push(curHash); restoreY = 0; }
+    forward = false;
+    curHash = next;
+  });
+}
+
+/** Vorherige Ansicht innerhalb der App (für den Zurück-Knopf), sonst undefined. */
+export function previousHash(): string | undefined { return navStack[navStack.length - 1]; }
+/** Zurück zur vorherigen Ansicht – oder, ohne Verlauf (direkt geöffneter Link), zur Ausweichseite. */
+export function goBack(fallback: string) {
+  if (navStack.length) history.back();
+  else go(fallback);
+}
+
 export function useRoute(): Route {
   const [r, setR] = useState(() => parseHash(location.hash));
   useEffect(() => {
-    const h = () => { setR(parseHash(location.hash)); window.scrollTo({ top: 0 }); };
+    const h = () => setR(parseHash(location.hash));
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
   }, []);
+  useLayoutEffect(() => {
+    if (restoreY === null) return;
+    const y = restoreY;
+    restoreY = null;
+    window.scrollTo({ top: y });
+    // Inhalte (z. B. Bilder) können die Höhe noch ändern → kurz danach nochmal
+    if (y) requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, [r]);
   return r;
 }
 
 export function go(hash: string) {
-  if (location.hash === '#' + hash) return;
+  if (norm(location.hash) === norm('#' + hash)) return;
+  forward = true;
   location.hash = hash;
 }

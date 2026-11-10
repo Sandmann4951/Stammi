@@ -6,7 +6,7 @@ import { addDays, daysOf, endOf, toDate, weekdayMon0, WEEKDAYS, WEEKDAYS_SHORT }
 import { EventFormSheet } from '../forms';
 import { go, useStore } from '../store';
 import { Empty, Field, fmtDate, fmtRange, Icon, monthLabel, Segmented, Sheet } from '../ui';
-import { EventRow, sortEvents } from './common';
+import { calendarView, EventRow, sortEvents } from './common';
 
 export function seriesText(r: SeriesRule) {
   const wd = WEEKDAYS[weekdayMon0(r.startDate)];
@@ -111,7 +111,7 @@ function dotClass(e: StEvent) {
   return `dot ${e.type}${e.status === 'cancelled' ? ' cancelled' : ''}${e.status === 'closed' ? ' closed' : ''}`;
 }
 
-function MonthGrid({ ym, byDate, today, onPick, mini }: { ym: string; byDate: Map<string, StEvent[]>; today: string; onPick?: (d: string) => void; mini?: boolean }) {
+function MonthGrid({ ym, byDate, today, onPick, mini, selected }: { ym: string; byDate: Map<string, StEvent[]>; today: string; onPick?: (d: string) => void; mini?: boolean; selected?: string }) {
   return (
     <div className={`mgrid${mini ? ' mini' : ''}`} role="grid">
       {WEEKDAYS_SHORT.map((w) => <span key={w} className="mg-wd" role="columnheader">{mini ? w[0] : w}</span>)}
@@ -120,12 +120,12 @@ function MonthGrid({ ym, byDate, today, onPick, mini }: { ym: string; byDate: Ma
         const evs = byDate.get(d) ?? [];
         const span = evs.find((e) => endOf(e) !== e.date && e.status !== 'cancelled');
         const spanCls = span ? ` span${d === span.date ? ' span-start' : ''}${d === endOf(span) ? ' span-end' : ''}` : '';
-        const cls = `mg-cell${d === today ? ' today' : ''}${evs.length ? ' has' : ''}${evs.some((e) => e.status !== 'cancelled') ? ' live' : ''}${spanCls}`;
+        const cls = `mg-cell${d === today ? ' today' : ''}${d === selected ? ' sel' : ''}${evs.length ? ' has' : ''}${evs.some((e) => e.status !== 'cancelled') ? ' live' : ''}${spanCls}`;
         const label = `${fmtDate(d)}${evs.length ? ': ' + evs.map((e) => e.title + (e.status === 'cancelled' ? ' (abgesagt)' : '')).join(', ') : ''}`;
-        return evs.length && onPick ? (
-          <button key={i} type="button" className={cls} aria-label={label} onClick={() => onPick(d)}>
+        return onPick ? (
+          <button key={i} type="button" className={cls} aria-label={label} aria-pressed={d === selected} onClick={() => onPick(d)}>
             <span className="mg-num">{toDate(d).getUTCDate()}</span>
-            <span className="mg-dots">{evs.slice(0, 3).map((e) => <i key={e.id} className={dotClass(e)} />)}</span>
+            {evs.length > 0 && <span className="mg-dots">{evs.slice(0, 3).map((e) => <i key={e.id} className={dotClass(e)} />)}</span>}
           </button>
         ) : (
           <span key={i} className={cls} aria-label={label}>
@@ -150,29 +150,42 @@ function Legend() {
   );
 }
 
-function MonthView({ ym, setYm, byDate }: { ym: string; setYm: (v: string) => void; byDate: Map<string, StEvent[]> }) {
+function MonthView({ ym, setYm, byDate, day, setDay }: { ym: string; setYm: (v: string) => void; byDate: Map<string, StEvent[]>; day?: string; setDay: (d?: string) => void }) {
   const { state, today } = useStore();
   const evs = state.events.filter((e) => ymOf(e.date) <= ym && ymOf(endOf(e)) >= ym).sort(sortEvents);
-  const pick = (d: string) => {
-    const list = byDate.get(d) ?? [];
-    if (list.length === 1) go('termin-' + list[0].id);
-    else document.getElementById('d-' + d)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
+  const sel = day && ymOf(day) === ym ? day : undefined;
+  const dayEvs = sel ? [...(byDate.get(sel) ?? [])].sort(sortEvents) : [];
+  // Wie beim iPhone: Tag antippen zeigt die Termine darunter, nochmal antippen klappt zu
+  const pick = (d: string) => setDay(d === sel ? undefined : d);
+  const shift = (n: number) => { setYm(shiftYm(ym, n)); setDay(undefined); };
   return (
     <div className="cal-view">
       <div className="period-nav">
-        <button className="icon-btn" type="button" aria-label="Vorheriger Monat" onClick={() => setYm(shiftYm(ym, -1))}><Icon name="left" /></button>
+        <button className="icon-btn" type="button" aria-label="Vorheriger Monat" onClick={() => shift(-1)}><Icon name="left" /></button>
         <strong>{MONTH_NAMES[+ym.slice(5) - 1]} {ym.slice(0, 4)}</strong>
-        <button className="icon-btn" type="button" aria-label="Nächster Monat" onClick={() => setYm(shiftYm(ym, 1))}><Icon name="right" /></button>
+        <button className="icon-btn" type="button" aria-label="Nächster Monat" onClick={() => shift(1)}><Icon name="right" /></button>
       </div>
       <div className="mgrid-card">
-        <MonthGrid ym={ym} byDate={byDate} today={today} onPick={pick} />
-        <Legend />
+        <MonthGrid ym={ym} byDate={byDate} today={today} onPick={pick} selected={sel} />
+        {sel ? (
+          <div className="day-panel" aria-live="polite">
+            <div className="dp-head">
+              <strong>{fmtDate(sel)}</strong>
+              <button className="icon-btn" type="button" aria-label="Tagesansicht schließen" onClick={() => setDay(undefined)}><Icon name="x" size={18} /></button>
+            </div>
+            {dayEvs.length
+              ? <div className="event-list">{dayEvs.map((e) => <EventRow key={e.id} ev={e} />)}</div>
+              : <p className="muted-line">An diesem Tag ist nichts eingetragen.</p>}
+          </div>
+        ) : <Legend />}
       </div>
-      {evs.length ? (
-        <div className="event-list">{evs.map((e) => <div key={e.id} id={'d-' + e.date}><EventRow ev={e} /></div>)}</div>
-      ) : <p className="muted-line">In diesem Monat ist nichts eingetragen.</p>}
-      {ymOf(today) !== ym && <button className="link" type="button" onClick={() => setYm(ymOf(today))}>Zum aktuellen Monat</button>}
+      {!sel && (evs.length ? (
+        <>
+          <h2 className="month-label">Alle Termine im {MONTH_NAMES[+ym.slice(5) - 1]}</h2>
+          <div className="event-list">{evs.map((e) => <EventRow key={e.id} ev={e} />)}</div>
+        </>
+      ) : <p className="muted-line">In diesem Monat ist nichts eingetragen.</p>)}
+      {ymOf(today) !== ym && <button className="link" type="button" onClick={() => { setYm(ymOf(today)); setDay(undefined); }}>Zum aktuellen Monat</button>}
     </div>
   );
 }
@@ -221,11 +234,14 @@ type Mode = 'list' | 'month' | 'year';
 
 export function Calendar() {
   const { state, admin, today } = useStore();
-  const [tab, setTab] = useState<'next' | 'past'>('next');
-  const [mode, setMode] = useState<Mode>('list');
-  const [q, setQ] = useState('');
-  const [ym, setYm] = useState(ymOf(today));
-  const [year, setYear] = useState(+today.slice(0, 4));
+  // Ansicht merken: Wer in einen Termin geht und zurückkommt, landet wieder genau hier
+  const [tab, setTab] = useState<'next' | 'past'>(calendarView.tab);
+  const [mode, setMode] = useState<Mode>(calendarView.mode);
+  const [q, setQ] = useState(calendarView.q);
+  const [ym, setYm] = useState(calendarView.ym ?? ymOf(today));
+  const [year, setYear] = useState(calendarView.year ?? +today.slice(0, 4));
+  const [day, setDay] = useState<string | undefined>(calendarView.day);
+  Object.assign(calendarView, { tab, mode, q, ym, year, day });
   const [newOpen, setNewOpen] = useState(false);
   const [serOpen, setSerOpen] = useState(false);
 
@@ -292,9 +308,9 @@ export function Calendar() {
           </section>
         ) : <Empty icon="search" title="Nichts gefunden">Versuch es mit einem anderen Wort – gesucht wird in Titel, Ort, Datum, Notizen, Beschlüssen und Auslagen.</Empty>
       ) : tab === 'past' && mode === 'month' ? (
-        <MonthView ym={ym} setYm={setYm} byDate={byDate} />
+        <MonthView ym={ym} setYm={setYm} byDate={byDate} day={day} setDay={setDay} />
       ) : tab === 'past' && mode === 'year' ? (
-        <YearView year={year} setYear={setYear} byDate={byDate} openMonth={(m) => { setYm(m); setMode('month'); }} />
+        <YearView year={year} setYear={setYear} byDate={byDate} openMonth={(m) => { setYm(m); setDay(undefined); setMode('month'); }} />
       ) : (
         <>
           {groups.length === 0 && (tab === 'next'

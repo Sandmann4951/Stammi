@@ -6,9 +6,9 @@ import type { MediaAsset, Note, StEvent } from '@engine/types';
 import { endOf, euro } from '@engine/util';
 import { EventFormSheet, ExpenseSheet } from '../forms';
 import { processPhoto, UploadError, useMediaUrl } from '../media';
-import { go, useStore } from '../store';
+import { goBack, useStore } from '../store';
 import { Avatar, Empty, Field, fmtDateTime, fmtRange, Icon, memberName, MemberPicker, Money, Pill, Section, Sheet, timeText, whenText } from '../ui';
-import { LocationEditor, PayerCard, RsvpButtons, StatusPill, TypeTag } from './common';
+import { BackButton, LocationEditor, PayerCard, RsvpButtons, StatusPill, TypeTag } from './common';
 import { Gallery } from './Gallery';
 
 export function EventDetail({ id }: { id: string }) {
@@ -31,7 +31,7 @@ export function EventDetail({ id }: { id: string }) {
 
   return (
     <div className="page detail">
-      <a className="back" href="#kalender"><Icon name="back" size={18} /> Kalender</a>
+      <BackButton fallback="kalender" fallbackLabel="Kalender" />
 
       <header className={`detail-hero${ev.status === 'cancelled' ? ' cancelled' : ''}${cover ? ' has-cover' : ''}`}>
         {cover && <CoverBanner m={cover} count={photos.length} onOpen={() => setGallery(cover.id)} />}
@@ -51,7 +51,7 @@ export function EventDetail({ id }: { id: string }) {
             {ev.status === 'planned' && <button className="btn small" type="button" onClick={() => setCancel(true)}><Icon name="x" size={16} /> Absagen</button>}
             {ev.status === 'cancelled' && <button className="btn small" type="button" onClick={() => run(call('restoreEvent', ev.id), 'Termin findet wieder statt')}>Absage zurücknehmen</button>}
             {ev.status === 'closed' && admin && <button className="btn small" type="button" onClick={() => setReopen(true)}>Abrechnung zurücknehmen</button>}
-            {!ev.originalSeriesDate && ev.status !== 'closed' && <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteEvent', ev.id), 'Termin gelöscht')) go('kalender'); }}><Icon name="trash" size={16} /> Löschen</button>}
+            {!ev.originalSeriesDate && ev.status !== 'closed' && <button className="btn small ghost danger" type="button" onClick={() => { if (run(call('deleteEvent', ev.id), 'Termin gelöscht')) goBack('kalender'); }}><Icon name="trash" size={16} /> Löschen</button>}
           </div>
         )}
       </header>
